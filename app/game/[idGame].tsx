@@ -1,8 +1,6 @@
-import { View, Text, StyleSheet, ScrollView, Image } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
+import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getGameById } from "../../src/services/gameService";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { StackScreen } from "react-native-screens";
 
 export default function GameDetail() {
 
@@ -26,7 +24,7 @@ export default function GameDetail() {
             <Stack.Screen options={{ title: "Detalhes", headerBackTitle: "Voltar" }} />
 
             <Image
-                source={{ uri: game.image }}
+                source={{ uri: game.coverUrl }}
                 style={styles.cover}
                 resizeMode="cover"
             />
@@ -34,25 +32,19 @@ export default function GameDetail() {
             <View style={styles.content}>
                 <Text style={styles.title}>{game.name}</Text>
 
-                {/* LINHA DE METADADOS (Chips) */}
                 <View style={styles.chipsContainer}>
-                    {/* Chip de Plataforma (Cinza) */}
                     <View style={styles.chip}>
                         <Text style={styles.chipText}>{game.platforms[0]}</Text>
-                        {/* Peguei só a primeira pra simplificar visualmente, ou use .join se quiser todas */}
                     </View>
 
-                    {/* Chip de Status (Verde ou Dinâmico) */}
                     <View style={[styles.chip, styles.chipStatus]}>
                         <Text style={styles.chipTextStatus}>{game.status.toUpperCase()}</Text>
                     </View>
                 </View>
 
-                {/* DESCRIÇÃO */}
                 <Text style={styles.sectionTitle}>Sobre o jogo</Text>
-                <Text style={styles.description}>{game.description}</Text>
+                <Text style={styles.description}>{game.personalDescription}</Text>
 
-                {/* FICHA TÉCNICA SIMPLES */}
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>Lançado em {game.releaseYear}</Text>
                     <Text style={styles.footerText}>•</Text>
@@ -70,10 +62,10 @@ const styles = StyleSheet.create({
     },
     cover: {
         width: "100%",
-        height: 250, // Capa bem alta
+        height: 250,
     },
     content: {
-        padding: 20, // Espaçamento para o texto não colar na borda
+        padding: 20,
     },
     title: {
         fontSize: 28,
@@ -94,24 +86,24 @@ const styles = StyleSheet.create({
     description: {
         fontSize: 16,
         color: "#EEE",
-        lineHeight: 24, // Altura da linha para facilitar leitura
+        lineHeight: 24,
         marginTop: 20,
     },
 
     chipsContainer: {
-        flexDirection: "row", // Alinha um ao lado do outro
+        flexDirection: "row",
         marginBottom: 20,
-        gap: 10, // Espaço entre os chips
+        gap: 10,
     },
     chip: {
-        backgroundColor: "#323238", // Cinza escuro
+        backgroundColor: "#323238",
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 8,
-        alignSelf: 'flex-start', // O chip fica do tamanho do texto, não estica
+        alignSelf: 'flex-start',
     },
     chipStatus: {
-        backgroundColor: "#00B37E", // Verde (Rocketseat style)
+        backgroundColor: "#00B37E",
     },
     chipText: {
         color: "#E1E1E6",
@@ -140,4 +132,4 @@ const styles = StyleSheet.create({
         color: "#7C7C8A",
         fontSize: 14,
     }
-})
+});

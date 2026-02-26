@@ -6,12 +6,16 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "gametracker",
-    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#121212",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "ios": {
+      "backgroundColor": "#121212",
       "supportsTablet": true
     },
     "android": {
+      "userInterfaceStyle": "dark",
+      "backgroundColor": "#121212",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -26,6 +30,7 @@
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
+      "expo-system-ui",
       "expo-router",
       [
         "expo-splash-screen",

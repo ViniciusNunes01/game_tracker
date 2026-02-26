@@ -3,11 +3,15 @@ export type GameStatus = 'playing' | 'completed' | 'backlog' | 'abandoned';
 export type MediaType = 'physical' | 'digital';
 
 export interface Game {
+
     idGame: number;
+    rawgId?: number;
+
     name: string;
-    image: string;
-    description: string;
+    coverUrl: string;
     releaseYear: number;
+
+    personalDescription: string;
     platforms: Platform[];
     status: GameStatus;
     mediaType?: MediaType;
