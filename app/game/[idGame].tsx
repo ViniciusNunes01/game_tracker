@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, ScrollView, Image } from "react-native";
 import { Stack, useLocalSearchParams } from "expo-router";
 import { getGameById } from "../../src/services/gameService";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -16,17 +16,50 @@ export default function GameDetail() {
     if (!game) {
         return (
             <View style={styles.container}>
-                <Text style={styles.text}>Jogo não encontrado!</Text>
+                <Text style={styles.description}>Jogo não encontrado!</Text>
             </View>
         )
     }
 
     return (
-        <View style={styles.container}>
-            <Stack.Screen options={{ title: game.name, headerBackTitle: "Voltar" }} />
-            <Text style={styles.title}>{game.name}</Text>
-            <Text style={styles.status}>Status: {game.status}</Text>
-        </View>
+        <ScrollView style={styles.container}>
+            <Stack.Screen options={{ title: "Detalhes", headerBackTitle: "Voltar" }} />
+
+            <Image
+                source={{ uri: game.image }}
+                style={styles.cover}
+                resizeMode="cover"
+            />
+
+            <View style={styles.content}>
+                <Text style={styles.title}>{game.name}</Text>
+
+                {/* LINHA DE METADADOS (Chips) */}
+                <View style={styles.chipsContainer}>
+                    {/* Chip de Plataforma (Cinza) */}
+                    <View style={styles.chip}>
+                        <Text style={styles.chipText}>{game.platforms[0]}</Text>
+                        {/* Peguei só a primeira pra simplificar visualmente, ou use .join se quiser todas */}
+                    </View>
+
+                    {/* Chip de Status (Verde ou Dinâmico) */}
+                    <View style={[styles.chip, styles.chipStatus]}>
+                        <Text style={styles.chipTextStatus}>{game.status.toUpperCase()}</Text>
+                    </View>
+                </View>
+
+                {/* DESCRIÇÃO */}
+                <Text style={styles.sectionTitle}>Sobre o jogo</Text>
+                <Text style={styles.description}>{game.description}</Text>
+
+                {/* FICHA TÉCNICA SIMPLES */}
+                <View style={styles.footer}>
+                    <Text style={styles.footerText}>Lançado em {game.releaseYear}</Text>
+                    <Text style={styles.footerText}>•</Text>
+                    <Text style={styles.footerText}>{game.mediaType === 'physical' ? 'Mídia Física' : 'Digital'}</Text>
+                </View>
+            </View>
+        </ScrollView>
     );
 }
 
@@ -34,20 +67,77 @@ const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: "#121212",
-        alignItems: "center",
-        justifyContent: "center",
+    },
+    cover: {
+        width: "100%",
+        height: 250, // Capa bem alta
+    },
+    content: {
+        padding: 20, // Espaçamento para o texto não colar na borda
     },
     title: {
-        fontSize: 24,
+        fontSize: 28,
+        fontWeight: "bold",
+        color: "#FFF",
+        marginBottom: 10,
+    },
+    label: {
+        fontSize: 14,
+        color: "#AAA",
+        marginTop: 10,
+    },
+    value: {
+        fontSize: 16,
+        color: "#DDD",
+        fontWeight: "500",
+    },
+    description: {
+        fontSize: 16,
+        color: "#EEE",
+        lineHeight: 24, // Altura da linha para facilitar leitura
+        marginTop: 20,
+    },
+
+    chipsContainer: {
+        flexDirection: "row", // Alinha um ao lado do outro
+        marginBottom: 20,
+        gap: 10, // Espaço entre os chips
+    },
+    chip: {
+        backgroundColor: "#323238", // Cinza escuro
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+        alignSelf: 'flex-start', // O chip fica do tamanho do texto, não estica
+    },
+    chipStatus: {
+        backgroundColor: "#00B37E", // Verde (Rocketseat style)
+    },
+    chipText: {
+        color: "#E1E1E6",
+        fontSize: 12,
+        fontWeight: "bold",
+    },
+    chipTextStatus: {
+        color: "#FFF",
+        fontSize: 12,
+        fontWeight: "bold",
+    },
+    sectionTitle: {
+        fontSize: 18,
         fontWeight: "bold",
         color: "#FFF",
         marginBottom: 8,
     },
-    status: {
-        fontSize: 16,
-        color: "#AAA",
+    footer: {
+        flexDirection: "row",
+        gap: 8,
+        borderTopWidth: 1,
+        borderTopColor: "#323238",
+        paddingTop: 16,
     },
-    text: {
-        color: "#FFF",
+    footerText: {
+        color: "#7C7C8A",
+        fontSize: 14,
     }
-});
+})
