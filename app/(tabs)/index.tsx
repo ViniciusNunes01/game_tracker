@@ -1,18 +1,19 @@
 import { GameCard } from "@/src/components/GameCard";
-import { mockGames } from "@/src/services/gameService"; // Importe o mock
+import { mockGames } from "@/src/services/gameService";
 import React from "react";
-import { View, FlatList, StyleSheet } from "react-native"; // Removi Image e Text pois não uso mais aqui
+import { FlatList, StyleSheet } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <FlatList
         data={mockGames}
         keyExtractor={(item) => item.idGame.toString()}
         renderItem={({ item }) => <GameCard data={item} />}
         contentContainerStyle={styles.listContent}
       />
-    </View>
+    </SafeAreaView>
   );
 }
 

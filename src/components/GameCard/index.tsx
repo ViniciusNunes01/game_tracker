@@ -1,6 +1,7 @@
 import React from "react";
 import { Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Game } from "../../types/Game";
+import { Link } from "expo-router";
 
 interface gameProps {
     data: Game;
@@ -9,19 +10,13 @@ interface gameProps {
 export function GameCard({ data }: gameProps) {
 
     return (
-        <TouchableOpacity style={styles.card} activeOpacity={0.7}>
-
-            <Image
-                source={{ uri: data.image }}
-                style={styles.cover}
-            />
-
-            <View style={styles.info}>
-                <Text style={styles.title}>{data.name}</Text>
-                <Text style={styles.status}>{data.status}</Text>
-            </View>
-
-        </TouchableOpacity>
+        <Link asChild href={`/game/${data.idGame}` as any}>
+            <TouchableOpacity style={styles.card} activeOpacity={0.7}>
+                <View style={styles.info}>
+                    <Text style={styles.title}>{data.name}</Text>
+                </View>
+            </TouchableOpacity>
+        </Link>
     );
 }
 

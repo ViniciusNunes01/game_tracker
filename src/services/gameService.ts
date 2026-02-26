@@ -20,3 +20,11 @@ export const mockGames: Game[] = [
         status: "backlog",
     },
 ];
+
+export function getGameById(idGame: number) {
+
+    return (
+        mockGames.find((game) => game.idGame === idGame)
+    )
+
+}
