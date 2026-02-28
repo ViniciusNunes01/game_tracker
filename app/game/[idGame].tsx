@@ -1,8 +1,9 @@
-import { Stack, useLocalSearchParams } from "expo-router";
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Link, router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { getGameById } from "../../src/services/gameService";
-import { useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Game } from "@/src/types/Game";
+import { deleteGameFromStorage } from "@/src/services/storageService";
 
 export default function GameDetail() {
 
@@ -14,14 +15,16 @@ export default function GameDetail() {
     const [game, setGame] = useState<Game | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
-    useEffect(() => {
-        async function fetchGame() {
-            const foundGame = await getGameById(gameId);
-            setGame(foundGame || null);
-            setIsLoading(false);
-        }
-        fetchGame();
-    }, [gameId]);
+    useFocusEffect(
+        useCallback(() => {
+            async function fetchGame() {
+                const foundGame = await getGameById(gameId);
+                setGame(foundGame || null);
+                setIsLoading(false);
+            }
+            fetchGame();
+        }, [gameId])
+    );
 
     if (isLoading) {
         return (
@@ -39,9 +42,40 @@ export default function GameDetail() {
         )
     }
 
+    const handleDelete = () => {
+        Alert.alert(
+            "Apagar Jogo",
+            `Tem certeza que deseja remover "${game?.name}" da sua coleção?`,
+            [
+                {
+                    text: "Cancelar",
+                    style: "cancel"
+                },
+                {
+                    text: "Apagar",
+                    style: "destructive",
+                    onPress: async () => {
+                        await deleteGameFromStorage(gameId);
+                        router.replace('/');
+                    }
+                }
+            ]
+        );
+    };
+
     return (
         <ScrollView style={styles.container}>
-            <Stack.Screen options={{ title: "Detalhes", headerBackTitle: "Voltar" }} />
+            <Stack.Screen options={{
+                title: "Detalhes",
+                headerBackTitle: "Voltar",
+                headerRight: () => (
+                    <Link href={`/game/edit/${game.idGame}`} asChild>
+                        <TouchableOpacity>
+                            <Text style={{ color: '#8257E5', fontSize: 16, fontWeight: 'bold' }}>Editar</Text>
+                        </TouchableOpacity>
+                    </Link>
+                )
+            }} />
 
             <Image
                 source={{ uri: game.coverUrl }}
@@ -80,6 +114,10 @@ export default function GameDetail() {
                     <Text style={styles.footerText}>•</Text>
                     <Text style={styles.footerText}>{game.mediaType === 'physical' ? 'Mídia Física' : 'Digital'}</Text>
                 </View>
+
+                <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+                    <Text style={styles.deleteButtonText}>Apagar Jogo</Text>
+                </TouchableOpacity>
             </View>
         </ScrollView>
     );
@@ -161,5 +199,19 @@ const styles = StyleSheet.create({
     footerText: {
         color: "#7C7C8A",
         fontSize: 14,
+    },
+    deleteButton: {
+        marginTop: 32,
+        marginBottom: 20,
+        paddingVertical: 14,
+        borderRadius: 8,
+        borderWidth: 1,
+        alignItems: 'center',
+        backgroundColor: "#323238"
+    },
+    deleteButtonText: {
+        color: '#FF6B6B',
+        fontSize: 16,
+        fontWeight: 'bold',
     }
 });

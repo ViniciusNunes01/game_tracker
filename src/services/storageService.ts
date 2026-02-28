@@ -23,3 +23,15 @@ export async function loadGamesFromStorage(): Promise<Game[]> {
         return [];
     }
 }
+
+export async function deleteGameFromStorage(idGameToRemove: number) {
+  try {
+    const existingGames = await loadGamesFromStorage();
+
+    const updatedGames = existingGames.filter((game) => game.idGame !== idGameToRemove);
+    
+    await saveGamesToStorage(updatedGames);
+  } catch (error) {
+    console.error("Erro ao apagar o jogo do celular:", error);
+  }
+}
