@@ -1,5 +1,6 @@
-export type Platform = 'PS5' | 'PS4' | 'Xbox Series' | 'PC' | 'Switch';
-export type GameStatus = 'playing' | 'completed' | 'backlog' | 'abandoned';
+import { Platform } from "./Platform";
+
+export type GameStatus = string;
 export type MediaType = 'physical' | 'digital';
 
 export interface Game {
@@ -11,9 +12,11 @@ export interface Game {
     coverUrl: string;
     releaseYear: number;
 
-    personalDescription: string;
+    personalDescription?: string;
     platforms: Platform[];
     status: GameStatus;
     mediaType?: MediaType;
     myCollection?: boolean;
 }
+
+

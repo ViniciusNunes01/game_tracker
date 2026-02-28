@@ -1,9 +1,9 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { router } from 'expo-router';
+import { loadGamesFromStorage, saveGamesToStorage } from '@/src/services/storageService';
 import { Game } from '@/src/types/Game';
-import { mockGames } from '@/src/services/gameService';
+import { router } from 'expo-router';
+import React, { useState } from 'react';
+import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function NewGameScreen() {
 
@@ -11,26 +11,37 @@ export default function NewGameScreen() {
     const [platform, setPlatform] = useState('');
     const [releaseYear, setReleaseYear] = useState('');
     const [description, setDescription] = useState('');
-
-    const handleSave = () => {
-
-        // TESTES
-        const newGame: Game = {
-            idGame: Math.floor(Math.random() * 10000),
-            name: gameName,
-            coverUrl: "https://via.placeholder.com/300x400/202024/7C7C8A?text=Sem+Capa",
-            releaseYear: Number(releaseYear) || new Date().getFullYear(),
-            personalDescription: description,
-            platforms: ['PS5'],
-            status: 'backlog',
-        };
-
-        // 2. Adicionamos o jogo na nossa lista falsa
-        mockGames.push(newGame);
+    const [coverUrl, setCoverUrl] = useState('');
+    const [status, setStatus] = useState<'playing' | 'completed' | 'backlog' | 'abandoned'>('backlog');
 
 
-        router.back();
-    }
+    const handleSave = async () => {
+        try {
+            const newGame: Game = {
+                idGame: Math.floor(Math.random() * 10000),
+                name: gameName,
+                coverUrl: "https://picsum.photos/id/237/200/300",
+                releaseYear: Number(releaseYear) || new Date().getFullYear(),
+                personalDescription: description,
+                status: 'backlog',
+                platforms: [{
+                    idPlatform: Math.floor(Math.random() * 100),
+                    name: platform
+                }],
+            };
+
+            const existingGames = await loadGamesFromStorage();
+
+            existingGames.push(newGame);
+
+            await saveGamesToStorage(existingGames);
+
+            router.back();
+
+        } catch (error) {
+            console.error("Erro ao salvar:", error);
+        }
+    };
 
     return (
         <SafeAreaView style={styles.container}>

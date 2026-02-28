@@ -1,15 +1,35 @@
 import { Stack, useLocalSearchParams } from "expo-router";
-import { Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import { getGameById } from "../../src/services/gameService";
+import { useEffect, useState } from "react";
+import { Game } from "@/src/types/Game";
 
 export default function GameDetail() {
 
     const { idGame } = useLocalSearchParams();
-
     const idGameString = Array.isArray(idGame) ? idGame[0] : idGame;
     const gameId = Number(idGameString || "0");
 
-    const game = getGameById(gameId);
+
+    const [game, setGame] = useState<Game | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        async function fetchGame() {
+            const foundGame = await getGameById(gameId);
+            setGame(foundGame || null);
+            setIsLoading(false);
+        }
+        fetchGame();
+    }, [gameId]);
+
+    if (isLoading) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+                <ActivityIndicator size="large" color="#8257E5" />
+            </View>
+        );
+    }
 
     if (!game) {
         return (
@@ -33,16 +53,26 @@ export default function GameDetail() {
                 <Text style={styles.title}>{game.name}</Text>
 
                 <View style={styles.chipsContainer}>
-                    <View style={styles.chip}>
-                        <Text style={styles.chipText}>{game.platforms[0]}</Text>
-                    </View>
+                    {game.platforms?.length > 0 ? (
+                        game.platforms.map((plat, index) => (
+                            <View key={index} style={styles.chip}>
+                                <Text style={styles.chipText}>
+                                    {typeof plat === 'string' ? plat : plat.name}
+                                </Text>
+                            </View>
+                        ))
+                    ) : (
+                        <View style={styles.chip}>
+                            <Text style={styles.chipText}>Nenhuma</Text>
+                        </View>
+                    )}
 
                     <View style={[styles.chip, styles.chipStatus]}>
-                        <Text style={styles.chipTextStatus}>{game.status.toUpperCase()}</Text>
+                        <Text style={styles.chipTextStatus}>{game.status?.toUpperCase() || 'BACKLOG'}</Text>
                     </View>
                 </View>
 
-                <Text style={styles.sectionTitle}>Sobre o jogo</Text>
+                <Text style={styles.sectionTitle}>Anotações</Text>
                 <Text style={styles.description}>{game.personalDescription}</Text>
 
                 <View style={styles.footer}>

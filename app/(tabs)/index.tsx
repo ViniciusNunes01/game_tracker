@@ -1,24 +1,33 @@
 import { GameCard } from "@/src/components/GameCard";
-import { mockGames } from "@/src/services/gameService";
-import { Link } from "expo-router";
-import React, { useState } from "react";
+import { loadGamesFromStorage } from "@/src/services/storageService";
+import { Game } from "@/src/types/Game";
+import { Link, useFocusEffect } from "expo-router";
+import React, { useCallback, useState } from "react";
 import { FlatList, StyleSheet, Text, TextInput, TouchableOpacity } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
-
-  // Filtragem de jogos numa barra de pesquisa
   const [searchText, setSearchText] = useState('');
-  const filteredGames = mockGames.filter((game) => {
+
+  const [myGames, setMyGames] = useState<Game[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      async function fetchGames() {
+        const storedGames = await loadGamesFromStorage();
+        setMyGames(storedGames);
+      }
+
+      fetchGames();
+    }, [])
+  );
+
+  const filteredGames = myGames.filter((game) => {
     return game.name.toUpperCase().includes(searchText.toUpperCase());
-  })
-
-
+  });
 
   return (
     <SafeAreaView style={styles.container}>
-
-      {/* Filtro */}
       <TextInput
         style={styles.searchInput}
         placeholder="Buscar jogo pelo nome..."
@@ -27,16 +36,15 @@ export default function HomeScreen() {
         onChangeText={setSearchText}
       />
 
-      {/* Lista de Jogos */}
       <FlatList
         data={filteredGames}
         keyExtractor={(item) => item.idGame.toString()}
         renderItem={({ item }) => <GameCard data={item} />}
         contentContainerStyle={styles.listContent}
+        ListEmptyComponent={<Text style={styles.emptyText}>Nenhum jogo na coleção ainda.</Text>}
       />
 
-      {/* Botão de Adicionar */}
-      <Link href={"/game/new"} asChild>
+      <Link href="/game/new" asChild>
         <TouchableOpacity style={styles.fab}>
           <Text style={styles.fabText}>+</Text>
         </TouchableOpacity>
@@ -84,5 +92,11 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: "bold",
     lineHeight: 34,
+  },
+  emptyText: {
+    color: '#7C7C8A',
+    textAlign: 'center',
+    marginTop: 40,
+    fontSize: 16,
   }
 });
