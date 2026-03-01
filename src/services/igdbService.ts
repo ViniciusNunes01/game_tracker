@@ -33,7 +33,7 @@ export async function searchGameImages(gameName: string) {
                 'Client-ID': CLIENT_ID as string,
                 'Authorization': `Bearer ${token}`,
             },
-            data: `search "${gameName}"; fields name, artworks.image_id, screenshots.image_id; limit 15;`
+            data: `search "${gameName}"; fields name, cover.image_id, artworks.image_id, screenshots.image_id; limit 15;`
         });
 
         return response.data;

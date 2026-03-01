@@ -1,6 +1,5 @@
 import { Platform } from "./Platform";
 
-export type GameStatus = string;
 export type MediaType = 'physical' | 'digital';
 
 export type CoverOffset = {
@@ -12,18 +11,15 @@ export type CoverOffset = {
 export interface Game {
 
     idGame: number;
-    rawgId?: number;
-
     name: string;
-    coverUrl: string;
     releaseYear: number;
-
     personalDescription?: string;
     platforms: Platform[];
-    status: GameStatus;
+    status: string;
     mediaType?: MediaType;
     myCollection?: boolean;
 
-    coverOffset?: CoverOffset;
+    coverUrl: string;
+    boxArtUrl?: string;
 }
 

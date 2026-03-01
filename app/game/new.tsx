@@ -14,6 +14,8 @@ export default function NewGameScreen() {
     const [media, setMedia] = useState<'physical' | 'digital'>('physical');
     const [releaseYear, setReleaseYear] = useState('');
     const [description, setDescription] = useState('');
+
+    const [boxArtUrl, setBoxArtUrl] = useState('');
     const [coverUrl, setCoverUrl] = useState('');
 
     const [isModalVisible, setIsModalVisible] = useState(false);
@@ -25,7 +27,8 @@ export default function NewGameScreen() {
             const newGame: Game = {
                 idGame: Math.floor(Math.random() * 10000),
                 name: gameName,
-                coverUrl: coverUrl,
+                coverUrl: coverUrl,      // A imagem panorâmica que você escolheu na lista
+                boxArtUrl: boxArtUrl,    // A capa vertical que o app pegou sozinho!
                 releaseYear: Number(releaseYear) || new Date().getFullYear(),
                 personalDescription: description,
                 mediaType: media,
@@ -66,6 +69,16 @@ export default function NewGameScreen() {
 
         try {
             const results = await searchGameImages(gameName);
+
+            // --- AUTO-CAPTURA DA CAPA VERTICAL (BOX ART) ---
+            // Ele acha o primeiro resultado que tenha uma capa oficial e guarda em segredo!
+            const firstGameWithCover = results.find((g: any) => g.cover?.image_id);
+            if (firstGameWithCover) {
+                const verticalUrl = getIgdbImageUrl(firstGameWithCover.cover.image_id, 't_cover_big');
+                setBoxArtUrl(verticalUrl || '');
+            }
+            // -----------------------------------------------
+
             let extractedImages: string[] = [];
 
             results.forEach((gameData: any) => {

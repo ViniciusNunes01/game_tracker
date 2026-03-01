@@ -17,9 +17,12 @@ export default function EditGameScreen() {
     const [platform, setPlatform] = useState('');
     const [releaseYear, setReleaseYear] = useState('');
     const [description, setDescription] = useState('');
-    const [coverUrl, setCoverUrl] = useState('');
     const [media, setMedia] = useState<'physical' | 'digital'>('physical');
     const [isLoading, setIsLoading] = useState(true);
+
+
+    const [coverUrl, setCoverUrl] = useState('');
+    const [boxArtUrl, setBoxArtUrl] = useState('');
 
     const [isIgdbModalVisible, setIsIgdbModalVisible] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
@@ -32,10 +35,11 @@ export default function EditGameScreen() {
                 setGame(existingGame);
                 setGameName(existingGame.name);
                 setCoverUrl(existingGame.coverUrl);
+                setBoxArtUrl(existingGame.boxArtUrl || ''); // <-- CARREGA A CAPA AQUI
                 setReleaseYear(existingGame.releaseYear.toString());
                 setDescription(existingGame.personalDescription ?? '');
                 setMedia(existingGame.mediaType || 'physical');
-                
+
                 if (existingGame.platforms && existingGame.platforms.length > 0) {
                     const firstPlat = existingGame.platforms[0];
                     setPlatform(typeof firstPlat === 'string' ? firstPlat : firstPlat.name);
@@ -57,6 +61,7 @@ export default function EditGameScreen() {
                         ...g,
                         name: gameName,
                         coverUrl: coverUrl,
+                        boxArtUrl: boxArtUrl, // <-- SALVA NO BANCO AQUI
                         releaseYear: Number(releaseYear) || new Date().getFullYear(),
                         personalDescription: description,
                         mediaType: media,
@@ -82,6 +87,15 @@ export default function EditGameScreen() {
 
         try {
             const results = await searchGameImages(gameName);
+
+            // --- AUTO-CAPTURA DA CAPA VERTICAL (BOX ART) ---
+            const firstGameWithCover = results.find((g: any) => g.cover?.image_id);
+            if (firstGameWithCover) {
+                const verticalUrl = getIgdbImageUrl(firstGameWithCover.cover.image_id, 't_cover_big');
+                setBoxArtUrl(verticalUrl || '');
+            }
+            // -----------------------------------------------
+
             let extractedImages: string[] = [];
 
             results.forEach((gameData: any) => {
@@ -122,7 +136,7 @@ export default function EditGameScreen() {
         <SafeAreaView style={styles.container}>
             <Stack.Screen options={{ title: "Editar Jogo", headerBackTitle: "Cancelar" }} />
             <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-                
+
                 <View style={styles.inputGroup}>
                     <Text style={styles.label}>Nome do Jogo</Text>
                     <TextInput style={styles.input} value={gameName} onChangeText={setGameName} />
@@ -151,7 +165,7 @@ export default function EditGameScreen() {
                 <View style={styles.inputGroup}>
                     <Text style={styles.label}>Formato de Mídia</Text>
                     <View style={styles.mediaSelectorContainer}>
-                        <TouchableOpacity 
+                        <TouchableOpacity
                             style={[styles.mediaButton, media === 'physical' && styles.mediaButtonActive]}
                             onPress={() => setMedia('physical')}
                         >
@@ -159,7 +173,7 @@ export default function EditGameScreen() {
                             <Text style={[styles.mediaButtonText, media === 'physical' && styles.mediaButtonTextActive]}>Mídia Física</Text>
                         </TouchableOpacity>
 
-                        <TouchableOpacity 
+                        <TouchableOpacity
                             style={[styles.mediaButton, media === 'digital' && styles.mediaButtonActive]}
                             onPress={() => setMedia('digital')}
                         >
@@ -222,7 +236,7 @@ const styles = StyleSheet.create({
     button: { backgroundColor: '#8257E5', padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 24, marginBottom: 40 },
     buttonText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
     textArea: { height: 120, textAlignVertical: 'top' },
-    
+
     urlInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#202024', borderRadius: 8 },
     urlInput: { flex: 1, color: '#FFF', paddingHorizontal: 16, paddingVertical: 12, fontSize: 16 },
     searchButton: { backgroundColor: '#8257E5', paddingHorizontal: 16, paddingVertical: 12, borderTopRightRadius: 8, borderBottomRightRadius: 8, justifyContent: 'center', alignItems: 'center' },
