@@ -2,7 +2,7 @@ import { loadGamesFromStorage } from "@/src/services/storageService";
 import { Game } from "@/src/types/Game";
 import { Link, useFocusEffect, router } from "expo-router";
 import React, { useCallback, useState, useMemo, useRef } from "react";
-import { FlatList, StyleSheet, Text, TextInput as RNTextInput, TouchableOpacity, View, Image, ScrollView, Modal, TextInput } from "react-native";
+import { FlatList, StyleSheet, Text, TextInput as RNTextInput, TouchableOpacity, View, Image, ScrollView, Modal, TextInput, Animated } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -17,6 +17,11 @@ export default function HomeScreen() {
 
   const [catalogTitle, setCatalogTitle] = useState('Meu Catálogo');
   const titleRef = useRef<RNTextInput>(null);
+
+  // --- ESTADOS DA ANIMAÇÃO RETRÁTIL ---
+  const [isFiltersVisible, setIsFiltersVisible] = useState(false);
+  const filterHeight = useRef(new Animated.Value(0)).current; // Começa escondido (altura 0)
+  const filterOpacity = useRef(new Animated.Value(0)).current; // Começa transparente
 
   useFocusEffect(
     useCallback(() => {
@@ -78,6 +83,26 @@ export default function HomeScreen() {
     await AsyncStorage.setItem('userCatalogTitle', text);
   };
 
+  // --- FUNÇÃO QUE DISPARA A ANIMAÇÃO ---
+  const toggleFilters = () => {
+    const toValue = isFiltersVisible ? 0 : 1;
+    
+    Animated.parallel([
+        Animated.timing(filterHeight, {
+            toValue: isFiltersVisible ? 0 : 130, // 130 é a altura suficiente para os inputs e botões
+            duration: 300,
+            useNativeDriver: false, // height não suporta native driver
+        }),
+        Animated.timing(filterOpacity, {
+            toValue,
+            duration: 250,
+            useNativeDriver: false,
+        })
+    ]).start();
+
+    setIsFiltersVisible(!isFiltersVisible);
+  };
+
   return (
     <SafeAreaView style={styles.container}>
 
@@ -104,7 +129,12 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/game/new')}>
+          {/* BOTÃO DA GAVETA RETRÁTIL */}
+          <TouchableOpacity style={styles.iconButton} onPress={toggleFilters}>
+            <Ionicons name={isFiltersVisible ? "chevron-up" : "search"} size={26} color="#E1E1E6" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/wishlist' as any)}>
             <Ionicons name="heart" size={26} color="#E1E1E6" />
           </TouchableOpacity>
 
@@ -114,54 +144,55 @@ export default function HomeScreen() {
         </View>
       </View>
 
-      <View style={styles.searchSection}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={20} color="#7C7C8A" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar na coleção..."
-            placeholderTextColor="#7C7C8A"
-            value={searchText}
-            onChangeText={setSearchText}
-          />
+      {/* GAVETA ANIMADA DE BUSCA E FILTROS */}
+      <Animated.View style={[styles.collapsibleContainer, { height: filterHeight, opacity: filterOpacity }]}>
+        <View style={styles.searchSection}>
+          <View style={styles.searchBar}>
+            <Ionicons name="search" size={20} color="#7C7C8A" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Buscar na coleção..."
+              placeholderTextColor="#7C7C8A"
+              value={searchText}
+              onChangeText={setSearchText}
+            />
+          </View>
         </View>
-      </View>
 
-      {/* BARRA DE PASTAS VIRTUAIS (CUSTOMIZÁVEL E REMOVÍVEL) */}
-      <View style={styles.foldersContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.foldersScroll}>
-          {userFilters.map(folder => (
-            <TouchableOpacity
-              key={folder}
-              style={[styles.folderChip, activeFolder === folder && styles.folderChipActive]}
-              onPress={() => setActiveFolder(folder)}
-            >
-              <View style={styles.chipContent}>
-                  <Text style={[styles.folderText, activeFolder === folder && styles.folderTextActive]}>
-                    {folder}
-                  </Text>
-                  
-                  {/* --- NOVO: Ícone de 'x' para remover (aparece apenas se não for 'Todos') --- */}
-                  {folder !== 'Todos' && (
-                      <TouchableOpacity onPress={() => handleRemoveFilter(folder)} style={styles.removeFilterIcon}>
-                          <Ionicons 
-                              name="close-circle" 
-                              size={16} 
-                              color={activeFolder === folder ? '#FFF' : '#7C7C8A'} 
-                          />
-                      </TouchableOpacity>
-                  )}
-              </View>
+        {/* BARRA DE PASTAS VIRTUAIS */}
+        <View style={styles.foldersContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.foldersScroll}>
+            {userFilters.map(folder => (
+              <TouchableOpacity
+                key={folder}
+                style={[styles.folderChip, activeFolder === folder && styles.folderChipActive]}
+                onPress={() => setActiveFolder(folder)}
+              >
+                <View style={styles.chipContent}>
+                    <Text style={[styles.folderText, activeFolder === folder && styles.folderTextActive]}>
+                      {folder}
+                    </Text>
+                    
+                    {folder !== 'Todos' && (
+                        <TouchableOpacity onPress={() => handleRemoveFilter(folder)} style={styles.removeFilterIcon}>
+                            <Ionicons 
+                                name="close-circle" 
+                                size={16} 
+                                color={activeFolder === folder ? '#FFF' : '#7C7C8A'} 
+                            />
+                        </TouchableOpacity>
+                    )}
+                </View>
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity style={styles.addFolderChip} onPress={() => setIsFilterModalVisible(true)}>
+              <Ionicons name="add" size={18} color="#E1E1E6" />
+              <Text style={styles.addFolderText}>Filtro</Text>
             </TouchableOpacity>
-          ))}
-
-          {/* BOTÃO DE ADICIONAR NOVO FILTRO */}
-          <TouchableOpacity style={styles.addFolderChip} onPress={() => setIsFilterModalVisible(true)}>
-            <Ionicons name="add" size={18} color="#E1E1E6" />
-            <Text style={styles.addFolderText}>Filtro</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </View>
+          </ScrollView>
+        </View>
+      </Animated.View>
 
       {/* GRADE DE JOGOS */}
       <FlatList
@@ -257,6 +288,9 @@ const styles = StyleSheet.create({
   iconButton: { padding: 4 },
   addButton: { backgroundColor: '#8257E5', width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
 
+  // GAVETA RETRÁTIL - Adicionado overflow hidden
+  collapsibleContainer: { overflow: 'hidden' },
+
   searchSection: { paddingHorizontal: 16, marginBottom: 16 },
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#202024', borderRadius: 8, paddingHorizontal: 12 },
   searchIcon: { marginRight: 8 },
@@ -265,20 +299,17 @@ const styles = StyleSheet.create({
   // Pastas Virtuais (Chips)
   foldersContainer: { marginBottom: 16 },
   foldersScroll: { paddingHorizontal: 16, gap: 10, alignItems: 'center' },
-  // Estrutura do Chip mudou para flexrow
   folderChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#202024', borderWidth: 1, borderColor: '#323238' },
   folderChipActive: { backgroundColor: '#8257E5', borderColor: '#8257E5' },
-  // Container interno do chip
   chipContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   folderText: { color: '#7C7C8A', fontSize: 14, fontWeight: 'bold' },
   folderTextActive: { color: '#FFF' },
-  // Botão de remover o filtro
   removeFilterIcon: { padding: 2, marginLeft: -2, marginRight: -4 },
 
   addFolderChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#323238', borderStyle: 'dashed', gap: 4 },
   addFolderText: { color: '#E1E1E6', fontSize: 14, fontWeight: 'bold' },
 
-  listContent: { paddingHorizontal: 16, paddingBottom: 40 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 40, paddingTop: 10 },
   row: { justifyContent: 'space-between', marginBottom: 16 },
   card: { width: '48%', backgroundColor: '#202024', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#323238' },
   imageContainer: { width: '100%', aspectRatio: 3 / 4, backgroundColor: '#000' },

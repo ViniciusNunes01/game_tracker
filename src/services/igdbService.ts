@@ -24,7 +24,7 @@ export async function searchGameImages(gameName: string) {
     if (!token) return [];
 
     try {
-        const query = `fields name,first_release_date,game_type,category,version_parent,cover.image_id,artworks.image_id,screenshots.image_id,expansions; search "${gameName}"; limit 50;`;
+        const query = `fields name,first_release_date,game_type,version_parent,cover.image_id,artworks.image_id,screenshots.image_id,platforms.name; search "${gameName}"; limit 50;`;
 
         const response = await axios({
             url: 'https://api.igdb.com/v4/games',
@@ -41,7 +41,6 @@ export async function searchGameImages(gameName: string) {
 
         // Palavras-chave para excluir DLCs, edições especiais, etc
         const excludePatterns = [
-            /Edition/i,
             /Bundle/i,
             /Pack/i,
             /Collection/i,
