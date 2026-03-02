@@ -11,12 +11,10 @@ export default function HomeScreen() {
   const [searchText, setSearchText] = useState('');
   const [myGames, setMyGames] = useState<Game[]>([]);
 
-  // --- ESTADOS DOS FILTROS ---
   const [activeFolder, setActiveFolder] = useState('Todos');
   const [userFilters, setUserFilters] = useState<string[]>(['Todos']);
   const [isFilterModalVisible, setIsFilterModalVisible] = useState(false);
 
-  // --- ESTADOS DO TÍTULO ---
   const [catalogTitle, setCatalogTitle] = useState('Meu Catálogo');
   const titleRef = useRef<RNTextInput>(null);
 
@@ -33,7 +31,6 @@ export default function HomeScreen() {
     }, [])
   );
 
-  // Mapping de todos os filtros possíveis baseados nos jogos
   const availableFilters = useMemo(() => {
     const allPlatforms = myGames.flatMap(g =>
       g.platforms?.map(p => typeof p === 'string' ? p : p.name) || []
@@ -43,7 +40,6 @@ export default function HomeScreen() {
     return ['Física', 'Digital', ...uniquePlatforms];
   }, [myGames]);
 
-  // Filtragem dos jogos para exibição
   const displayGames = useMemo(() => {
     let filtered = myGames.filter((game) =>
       game.name.toUpperCase().includes(searchText.toUpperCase())
@@ -62,7 +58,6 @@ export default function HomeScreen() {
     return filtered;
   }, [myGames, searchText, activeFolder]);
 
-  // Função para adicionar filtros na barra
   const handleAddFilter = (filter: string) => {
     if (!userFilters.includes(filter)) {
       setUserFilters([...userFilters, filter]);
@@ -71,10 +66,8 @@ export default function HomeScreen() {
     setIsFilterModalVisible(false);
   };
 
-  // --- NOVO: Função para REMOVER filtros da barra ---
   const handleRemoveFilter = (filterToRemove: string) => {
       setUserFilters(prev => prev.filter(f => f !== filterToRemove));
-      // Se o filtro que removemos era o ativo, voltamos para "Todos"
       if (activeFolder === filterToRemove) {
           setActiveFolder('Todos');
       }
@@ -111,7 +104,7 @@ export default function HomeScreen() {
         </View>
 
         <View style={styles.headerActions}>
-          <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/wishlist')}>
+          <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/game/new')}>
             <Ionicons name="heart" size={26} color="#E1E1E6" />
           </TouchableOpacity>
 
@@ -141,7 +134,6 @@ export default function HomeScreen() {
             <TouchableOpacity
               key={folder}
               style={[styles.folderChip, activeFolder === folder && styles.folderChipActive]}
-              // O chip principal agora ativa o filtro
               onPress={() => setActiveFolder(folder)}
             >
               <View style={styles.chipContent}>
