@@ -1,21 +1,42 @@
 import { Tabs } from 'expo-router';
-import React from 'react';
-import { HapticTab } from '@/src/components/haptic-tab';
-import { IconSymbol } from '@/src/components/ui/icon-symbol';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function TabLayout() {
-
   return (
     <Tabs
       screenOptions={{
-        headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+        headerShown: false, // Esconde o cabeçalho padrão feio em cima
+        tabBarStyle: {
+          backgroundColor: '#1A1A1E',
+          borderTopWidth: 1,
+          borderTopColor: '#323238',
+          paddingBottom: 8,
+          paddingTop: 8,
+          height: 60,
+        },
+        tabBarActiveTintColor: '#8257E5', // Roxo quando selecionado
+        tabBarInactiveTintColor: '#7C7C8A', // Cinza quando inativo
+      }}
+    >
+      {/* ABA 1: O SEU DASHBOARD */}
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          title: 'Catálogo',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="game-controller" size={size} color={color} />
+          ),
+        }}
+      />
+      
+      {/* ABA 2: TELA DE AJUSTES/CONFIGURAÇÕES */}
+      <Tabs.Screen
+        name="settings"
+        options={{
+          title: 'Ajustes',
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="settings" size={size} color={color} />
+          ),
         }}
       />
     </Tabs>

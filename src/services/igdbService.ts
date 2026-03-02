@@ -24,7 +24,7 @@ export async function searchGameImages(gameName: string) {
     if (!token) return [];
 
     try {
-        const query = `fields name,first_release_date,game_type,version_parent,cover.image_id,artworks.image_id,screenshots.image_id,expansions; search "${gameName}"; limit 50;`;
+        const query = `fields name,first_release_date,game_type,category,version_parent,cover.image_id,artworks.image_id,screenshots.image_id,expansions; search "${gameName}"; limit 50;`;
 
         const response = await axios({
             url: 'https://api.igdb.com/v4/games',
@@ -46,7 +46,6 @@ export async function searchGameImages(gameName: string) {
             /Pack/i,
             /Collection/i,
             /DLC/i,
-            /Expansion/i,
             /Ultimate/i,
             /Game of the Year/i,
             /Deluxe/i,
@@ -56,17 +55,18 @@ export async function searchGameImages(gameName: string) {
             /Special/i
         ];
 
-        // Filtra Main Game (0), Standalone Expansion (3), Remake (7), Remaster (8), Expanded Game (10)
+        // Filtra jogos válidos considerando variações de enums do IGDB (game_type/category)
         const filtered = response.data.filter((game: any) => {
-            const validGameTypes = [0, 3, 7, 8, 10]; // 10 = Expanded Game (como P4 Golden)
-            const isValidType = validGameTypes.includes(game.game_type);
+            const normalizedType = game.game_type ?? game.category;
+            const validGameTypes = [0, 3, 4, 7, 8, 9, 10];
+            const isRemasterByName = /remaster|remastered/i.test(game.name || '');
+            const isValidType = validGameTypes.includes(normalizedType) || isRemasterByName;
             const hasVersionParent = !!game.version_parent;
             const matchesExcludePattern = excludePatterns.some(pattern => pattern.test(game.name));
-            
-            // Permite Expanded Games mesmo com version_parent, mas bloqueia edições especiais
-            const isExpandedGame = game.game_type === 10;
-            const shouldExclude = hasVersionParent && !isExpandedGame;
-            
+
+            const allowsVersionParent = [3, 4, 7, 8, 9, 10].includes(normalizedType) || isRemasterByName;
+            const shouldExclude = hasVersionParent && !allowsVersionParent;
+
             return isValidType && !shouldExclude && !matchesExcludePattern;
         });
 

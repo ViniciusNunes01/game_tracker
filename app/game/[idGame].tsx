@@ -11,7 +11,6 @@ export default function GameDetail() {
     const idGameString = Array.isArray(idGame) ? idGame[0] : idGame;
     const gameId = Number(idGameString || "0");
 
-
     const [game, setGame] = useState<Game | null>(null);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -36,7 +35,7 @@ export default function GameDetail() {
 
     if (!game) {
         return (
-            <View style={styles.container}>
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
                 <Text style={styles.description}>Jogo não encontrado!</Text>
             </View>
         )
@@ -47,10 +46,7 @@ export default function GameDetail() {
             "Apagar Jogo",
             `Tem certeza que deseja remover "${game?.name}" da sua coleção?`,
             [
-                {
-                    text: "Cancelar",
-                    style: "cancel"
-                },
+                { text: "Cancelar", style: "cancel" },
                 {
                     text: "Apagar",
                     style: "destructive",
@@ -63,8 +59,24 @@ export default function GameDetail() {
         );
     };
 
+    // --- Tratamento Inteligente de Múltiplas Mídias ---
+    const getMediaText = () => {
+        if (!game.mediaType) return null;
+        
+        // Garante que é um array para iterar facilmente
+        const mediaArray = Array.isArray(game.mediaType) ? game.mediaType : [game.mediaType];
+        
+        if (mediaArray.length === 0) return null;
+
+        // Traduz e junta com um "•"
+        const translated = mediaArray.map(m => m === 'physical' ? 'Física' : 'Digital');
+        return translated.join(' • ');
+    };
+
+    const mediaText = getMediaText();
+
     return (
-        <ScrollView style={styles.container}>
+        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
             <Stack.Screen options={{
                 title: "Detalhes",
                 headerBackTitle: "Voltar",
@@ -86,6 +98,7 @@ export default function GameDetail() {
             <View style={styles.content}>
                 <Text style={styles.title}>{game.name}</Text>
 
+                {/* Container com flexWrap para não quebrar a tela se tiver muitas plataformas */}
                 <View style={styles.chipsContainer}>
                     {game.platforms?.length > 0 ? (
                         game.platforms.map((plat, index) => (
@@ -97,7 +110,7 @@ export default function GameDetail() {
                         ))
                     ) : (
                         <View style={styles.chip}>
-                            <Text style={styles.chipText}>Nenhuma</Text>
+                            <Text style={styles.chipText}>Sem Plataforma</Text>
                         </View>
                     )}
 
@@ -107,16 +120,26 @@ export default function GameDetail() {
                 </View>
 
                 <Text style={styles.sectionTitle}>Anotações</Text>
-                <Text style={styles.description}>{game.personalDescription}</Text>
+                {game.personalDescription ? (
+                    <Text style={styles.description}>{game.personalDescription}</Text>
+                ) : (
+                    <Text style={[styles.description, { fontStyle: 'italic', color: '#7C7C8A' }]}>
+                        Nenhuma anotação salva para este jogo.
+                    </Text>
+                )}
 
                 <View style={styles.footer}>
                     <Text style={styles.footerText}>Lançado em {game.releaseYear}</Text>
-                    <Text style={styles.footerText}>•</Text>
-                    <Text style={styles.footerText}>{game.mediaType === 'physical' ? 'Mídia Física' : 'Digital'}</Text>
+                    {mediaText && (
+                        <>
+                            <Text style={styles.footerText}>•</Text>
+                            <Text style={styles.footerText}>{mediaText}</Text>
+                        </>
+                    )}
                 </View>
 
                 <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-                    <Text style={styles.deleteButtonText}>Apagar Jogo</Text>
+                    <Text style={styles.deleteButtonText}>Apagar Jogo da Coleção</Text>
                 </TouchableOpacity>
             </View>
         </ScrollView>
@@ -131,36 +154,29 @@ const styles = StyleSheet.create({
     cover: {
         width: "100%",
         height: 250,
+        backgroundColor: "#000",
     },
     content: {
         padding: 20,
+        paddingBottom: 40,
     },
     title: {
         fontSize: 28,
         fontWeight: "bold",
         color: "#FFF",
-        marginBottom: 10,
-    },
-    label: {
-        fontSize: 14,
-        color: "#AAA",
-        marginTop: 10,
-    },
-    value: {
-        fontSize: 16,
-        color: "#DDD",
-        fontWeight: "500",
+        marginBottom: 16,
     },
     description: {
         fontSize: 16,
-        color: "#EEE",
+        color: "#E1E1E6",
         lineHeight: 24,
-        marginTop: 20,
+        marginTop: 8,
+        marginBottom: 24,
     },
-
     chipsContainer: {
         flexDirection: "row",
-        marginBottom: 20,
+        flexWrap: "wrap", // <-- Isso salva o layout se houver muitas tags!
+        marginBottom: 24,
         gap: 10,
     },
     chip: {
@@ -168,46 +184,50 @@ const styles = StyleSheet.create({
         paddingHorizontal: 12,
         paddingVertical: 6,
         borderRadius: 8,
-        alignSelf: 'flex-start',
     },
     chipStatus: {
         backgroundColor: "#00B37E",
     },
     chipText: {
         color: "#E1E1E6",
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: "bold",
     },
     chipTextStatus: {
         color: "#FFF",
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: "bold",
     },
     sectionTitle: {
         fontSize: 18,
         fontWeight: "bold",
         color: "#FFF",
-        marginBottom: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: "#323238",
+        paddingBottom: 8,
     },
     footer: {
         flexDirection: "row",
+        alignItems: "center",
         gap: 8,
         borderTopWidth: 1,
         borderTopColor: "#323238",
         paddingTop: 16,
+        marginTop: 8,
     },
     footerText: {
         color: "#7C7C8A",
         fontSize: 14,
+        fontWeight: "600",
     },
     deleteButton: {
-        marginTop: 32,
-        marginBottom: 20,
+        marginTop: 40,
         paddingVertical: 14,
         borderRadius: 8,
         borderWidth: 1,
+        borderColor: "#FF6B6B",
+        backgroundColor: "rgba(255, 107, 107, 0.1)", // Fundo avermelhado super leve (elegante)
         alignItems: 'center',
-        backgroundColor: "#323238"
     },
     deleteButtonText: {
         color: '#FF6B6B',

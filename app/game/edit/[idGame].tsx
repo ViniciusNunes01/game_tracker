@@ -1,5 +1,5 @@
 import { getGameById } from '@/src/services/gameService';
-import { getGameImagesByIgdbId, getIgdbImageUrl, searchGameImages } from '@/src/services/igdbService';
+import { getGameImagesByIgdbId, getIgdbImageUrl } from '@/src/services/igdbService';
 import { loadGamesFromStorage, saveGamesToStorage } from '@/src/services/storageService';
 import { Game } from '@/src/types/Game';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { router, Stack, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function EditGameScreen() {
     const { idGame } = useLocalSearchParams();
@@ -15,27 +16,37 @@ export default function EditGameScreen() {
 
     const [game, setGame] = useState<Game | null>(null);
     const [gameName, setGameName] = useState('');
-    const [platform, setPlatform] = useState('');
+    const [status, setStatus] = useState('Backlog');
     const [releaseYear, setReleaseYear] = useState('');
     const [description, setDescription] = useState('');
-
-    // --- NOVO: Múltiplas Mídias ---
     const [selectedMedia, setSelectedMedia] = useState<string[]>([]);
+    
+    // --- NOVO: ARRAY DE PLATAFORMAS ---
+    const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
 
     const [isLoading, setIsLoading] = useState(true);
     const [coverUrl, setCoverUrl] = useState('');
     const [boxArtUrl, setBoxArtUrl] = useState('');
 
-    // --- ESTADOS DOS MODAIS DO IGDB ---
-    const [isVersionModalVisible, setIsVersionModalVisible] = useState(false);
     const [isIgdbModalVisible, setIsIgdbModalVisible] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
-
-    const [gameVersions, setGameVersions] = useState<any[]>([]);
     const [igdbImages, setIgdbImages] = useState<string[]>([]);
+
+    const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
+    const [availableStatuses, setAvailableStatuses] = useState<string[]>([]);
+    const [isPlatformModalVisible, setIsPlatformModalVisible] = useState(false);
+    const [isStatusModalVisible, setIsStatusModalVisible] = useState(false);
 
     useEffect(() => {
         async function loadGameData() {
+            const savedPlatforms = await AsyncStorage.getItem('custom_platforms');
+            const savedStatuses = await AsyncStorage.getItem('custom_statuses');
+            if (savedPlatforms) setAvailablePlatforms(JSON.parse(savedPlatforms));
+            else setAvailablePlatforms(['PS5', 'PS4', 'Nintendo Switch', 'PC']);
+            
+            if (savedStatuses) setAvailableStatuses(JSON.parse(savedStatuses));
+            else setAvailableStatuses(['Backlog', 'Jogando', 'Terminado', 'Platinado', 'Abandonado']);
+
             const existingGame = await getGameById(gameId);
             if (existingGame) {
                 setGame(existingGame);
@@ -45,19 +56,18 @@ export default function EditGameScreen() {
                 setIgdbId(existingGame.igdbId);
                 setReleaseYear(existingGame.releaseYear.toString());
                 setDescription(existingGame.personalDescription ?? '');
+                
+                setStatus(existingGame.status || 'Backlog');
 
-                // Carrega a mídia transformando em Array (caso o jogo antigo tenha string simples)
                 if (existingGame.mediaType) {
-                    if (Array.isArray(existingGame.mediaType)) {
-                        setSelectedMedia(existingGame.mediaType);
-                    } else {
-                        setSelectedMedia([existingGame.mediaType as string]);
-                    }
+                    if (Array.isArray(existingGame.mediaType)) setSelectedMedia(existingGame.mediaType);
+                    else setSelectedMedia([existingGame.mediaType as string]);
                 }
 
+                // RECUPERA AS PLATAFORMAS DO JOGO SALVO
                 if (existingGame.platforms && existingGame.platforms.length > 0) {
-                    const firstPlat = existingGame.platforms[0];
-                    setPlatform(typeof firstPlat === 'string' ? firstPlat : firstPlat.name);
+                    const platNames = existingGame.platforms.map((p: any) => typeof p === 'string' ? p : p.name);
+                    setSelectedPlatforms(platNames);
                 }
             }
             setIsLoading(false);
@@ -65,20 +75,20 @@ export default function EditGameScreen() {
         loadGameData();
     }, [gameId]);
 
-    // Função para ligar/desligar as mídias
     const toggleMedia = (type: string) => {
-        if (selectedMedia.includes(type)) {
-            setSelectedMedia(selectedMedia.filter(m => m !== type));
-        } else {
-            setSelectedMedia([...selectedMedia, type]);
-        }
+        if (selectedMedia.includes(type)) setSelectedMedia(selectedMedia.filter(m => m !== type));
+        else setSelectedMedia([...selectedMedia, type]);
+    };
+
+    const togglePlatform = (plat: string) => {
+        if (selectedPlatforms.includes(plat)) setSelectedPlatforms(selectedPlatforms.filter(p => p !== plat));
+        else setSelectedPlatforms([...selectedPlatforms, plat]);
     };
 
     const handleUpdate = async () => {
         if (!game) return;
         try {
             const allGames = await loadGamesFromStorage();
-
             const updatedGames = allGames.map(g => {
                 if (g.idGame === gameId) {
                     return {
@@ -89,82 +99,43 @@ export default function EditGameScreen() {
                         igdbId: igdbId,
                         releaseYear: Number(releaseYear) || new Date().getFullYear(),
                         personalDescription: description,
-                        mediaType: selectedMedia as any, // Salva o array com as mídias selecionadas
-                        platforms: [{ idPlatform: Math.floor(Math.random() * 100), name: platform }],
+                        mediaType: selectedMedia as any,
+                        status: status,
+                        platforms: selectedPlatforms.map(p => ({ idPlatform: Math.floor(Math.random() * 100), name: p })),
                     };
                 }
                 return g;
             });
-
             await saveGamesToStorage(updatedGames);
             router.back();
-
         } catch (error) {
             console.error("Erro ao atualizar:", error);
         }
     };
 
-    // 1. Busca as versões do jogo para evitar misturar imagens de sequências
-    // Busca Inteligente de Imagens (Via ID ou Fallback por Nome)
     const handleFetchImages = async () => {
+        if (!igdbId) {
+            alert("Este jogo não possui um ID oficial do IGDB vinculado. Por favor, cadastre-o novamente.");
+            return;
+        }
+
         setIsSearching(true);
         setIgdbImages([]);
-
         try {
-            // SE TIVER O ID: Caminho Expresso! Vai direto pras imagens.
-            if (igdbId) {
-                const gameData = await getGameImagesByIgdbId(igdbId);
-
-                let extractedImages: string[] = [];
-                if (gameData?.artworks) {
-                    gameData.artworks.forEach((art: any) => extractedImages.push(art.image_id));
-                }
-                if (gameData?.screenshots) {
-                    gameData.screenshots.forEach((shot: any) => extractedImages.push(shot.image_id));
-                }
-
-                setIgdbImages([...new Set(extractedImages)]);
-                setIsIgdbModalVisible(true); // Abre direto o modal de fotos!
-            }
-            // SE NÃO TIVER ID (Jogos Antigos): Caminho longo para vincular a versão primeiro
-            else {
-                if (!gameName) return;
-                setIsVersionModalVisible(true);
-
-                const results = await searchGameImages(gameName);
-                setGameVersions(results);
-            }
+            const gameData = await getGameImagesByIgdbId(igdbId);
+            let extractedImages: string[] = [];
+            
+            if (gameData?.artworks) gameData.artworks.forEach((art: any) => extractedImages.push(art.image_id));
+            if (gameData?.screenshots) gameData.screenshots.forEach((shot: any) => extractedImages.push(shot.image_id));
+            
+            setIgdbImages([...new Set(extractedImages)]);
+            setIsIgdbModalVisible(true);
         } catch (error) {
             console.error(error);
+            alert("Erro ao buscar imagens no IGDB.");
         } finally {
             setIsSearching(false);
         }
-    };
-
-    // 2. O usuário escolhe a versão exata e abrimos as imagens dela
-    const handleSelectVersion = (game: any) => {
-        setIsVersionModalVisible(false); // Fecha a lista de jogos
-        setIgdbId(game.id);
-
-        let extractedImages: string[] = [];
-        if (game.artworks) {
-            game.artworks.forEach((art: any) => extractedImages.push(art.image_id));
-        }
-        if (game.screenshots) {
-            game.screenshots.forEach((shot: any) => extractedImages.push(shot.image_id));
-        }
-
-        setIgdbImages([...new Set(extractedImages)]);
-
-        // Se por acaso a capa vertical estiver vazia, aproveitamos para consertar
-        if (game.cover?.image_id && !boxArtUrl) {
-            setBoxArtUrl(getIgdbImageUrl(game.cover.image_id, 't_cover_big') || '');
-        }
-
-        // Dá um pequeno delay para a transição dos modais ser suave
-        setTimeout(() => {
-            setIsIgdbModalVisible(true);
-        }, 300);
     };
 
     const handleSelectImage = (imageId: string) => {
@@ -188,7 +159,6 @@ export default function EditGameScreen() {
 
                 <View style={styles.inputGroup}>
                     <Text style={styles.label}>Nome do Jogo</Text>
-                    {/* Opacidade menor para indicar que é travado */}
                     <TextInput style={[styles.input, { opacity: 0.6 }]} value={gameName} editable={false} />
                 </View>
 
@@ -200,14 +170,27 @@ export default function EditGameScreen() {
                             <Ionicons name="search" size={24} color="#FFF" />
                         </TouchableOpacity>
                     </View>
-                    {coverUrl !== '' && (
-                        <Image source={{ uri: coverUrl }} style={styles.miniBannerPreview} resizeMode="cover" />
-                    )}
+                    {coverUrl !== '' && ( <Image source={{ uri: coverUrl }} style={styles.miniBannerPreview} resizeMode="cover" /> )}
                 </View>
 
-                <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Plataforma</Text>
-                    <TextInput style={styles.input} value={platform} onChangeText={setPlatform} />
+                <View style={{ flexDirection: 'row', gap: 16 }}>
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                        <Text style={styles.label}>Plataformas</Text>
+                        <TouchableOpacity style={styles.selectorButton} onPress={() => setIsPlatformModalVisible(true)}>
+                            <Text style={[styles.selectorText, selectedPlatforms.length === 0 && { color: '#7C7C8A' }]} numberOfLines={1}>
+                                {selectedPlatforms.length > 0 ? selectedPlatforms.join(', ') : "Nenhuma"}
+                            </Text>
+                            <Ionicons name="chevron-down" size={20} color="#7C7C8A" />
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={[styles.inputGroup, { flex: 1 }]}>
+                        <Text style={styles.label}>Status</Text>
+                        <TouchableOpacity style={styles.selectorButton} onPress={() => setIsStatusModalVisible(true)}>
+                            <Text style={styles.selectorText} numberOfLines={1}>{status || "Backlog"}</Text>
+                            <Ionicons name="chevron-down" size={20} color="#7C7C8A" />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 <View style={styles.inputGroup}>
@@ -215,22 +198,14 @@ export default function EditGameScreen() {
                     <TextInput style={[styles.input, { opacity: 0.6 }]} value={releaseYear} keyboardType="numeric" editable={false} />
                 </View>
 
-                {/* --- MÚLTIPLAS MÍDIAS APLICADAS AQUI --- */}
                 <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Formato de Mídia (Selecione uma ou ambas)</Text>
+                    <Text style={styles.label}>Formato de Mídia</Text>
                     <View style={styles.mediaSelectorContainer}>
-                        <TouchableOpacity
-                            style={[styles.mediaButton, selectedMedia.includes('physical') && styles.mediaButtonActive]}
-                            onPress={() => toggleMedia('physical')}
-                        >
+                        <TouchableOpacity style={[styles.mediaButton, selectedMedia.includes('physical') && styles.mediaButtonActive]} onPress={() => toggleMedia('physical')}>
                             <Ionicons name="disc-outline" size={20} color={selectedMedia.includes('physical') ? '#FFF' : '#7C7C8A'} />
-                            <Text style={[styles.mediaButtonText, selectedMedia.includes('physical') && styles.mediaButtonTextActive]}>Mídia Física</Text>
+                            <Text style={[styles.mediaButtonText, selectedMedia.includes('physical') && styles.mediaButtonTextActive]}>Física</Text>
                         </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.mediaButton, selectedMedia.includes('digital') && styles.mediaButtonActive]}
-                            onPress={() => toggleMedia('digital')}
-                        >
+                        <TouchableOpacity style={[styles.mediaButton, selectedMedia.includes('digital') && styles.mediaButtonActive]} onPress={() => toggleMedia('digital')}>
                             <Ionicons name="cloud-download-outline" size={20} color={selectedMedia.includes('digital') ? '#FFF' : '#7C7C8A'} />
                             <Text style={[styles.mediaButtonText, selectedMedia.includes('digital') && styles.mediaButtonTextActive]}>Digital</Text>
                         </TouchableOpacity>
@@ -246,37 +221,21 @@ export default function EditGameScreen() {
                     <Text style={styles.buttonText}>Salvar Alterações</Text>
                 </TouchableOpacity>
 
-                {/* --- MODAL 1: ESCOLHER A VERSÃO EXATA DO JOGO --- */}
-                <Modal visible={isVersionModalVisible} animationType="slide" presentationStyle="pageSheet">
+                {/* MODAL: Galeria de Banners */}
+                <Modal visible={isIgdbModalVisible} animationType="slide" presentationStyle="pageSheet">
                     <View style={styles.modalContainer}>
                         <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Qual versão de "{gameName}"?</Text>
-                            <TouchableOpacity onPress={() => setIsVersionModalVisible(false)}>
-                                <Ionicons name="close" size={28} color="#E1E1E6" />
-                            </TouchableOpacity>
+                            <Text style={styles.modalTitle}>Escolher Banner</Text>
+                            <TouchableOpacity onPress={() => setIsIgdbModalVisible(false)}><Ionicons name="close" size={28} color="#E1E1E6" /></TouchableOpacity>
                         </View>
                         {isSearching ? (
-                            <View style={styles.loadingContainer}>
-                                <ActivityIndicator size="large" color="#8257E5" />
-                                <Text style={styles.loadingText}>Buscando no banco de dados...</Text>
-                            </View>
+                            <View style={styles.loadingContainer}><ActivityIndicator size="large" color="#8257E5" /></View>
                         ) : (
-                            <FlatList
-                                data={gameVersions}
-                                keyExtractor={(item) => item.id.toString()}
-                                contentContainerStyle={styles.listContainer}
-                                ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma versão encontrada.</Text>}
+                            <FlatList data={igdbImages} keyExtractor={(item) => item} numColumns={1} contentContainerStyle={styles.gridContainer}
+                                ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma imagem de banner encontrada.</Text>}
                                 renderItem={({ item }) => (
-                                    <TouchableOpacity style={styles.gameListItem} onPress={() => handleSelectVersion(item)}>
-                                        <Image
-                                            source={{ uri: getIgdbImageUrl(item.cover?.image_id, 't_cover_small') || 'https://via.placeholder.com/45x60.png?text=Sem+Capa' }}
-                                            style={styles.gameListCover}
-                                        />
-                                        <View style={styles.gameListInfo}>
-                                            <Text style={styles.gameListTitle}>{item.name}</Text>
-                                            <Text style={styles.gameListYear}>Lançamento: {item.first_release_date ? new Date(item.first_release_date * 1000).getFullYear() : 'N/A'}</Text>
-                                        </View>
-                                        <Ionicons name="chevron-forward" size={20} color="#323238" />
+                                    <TouchableOpacity style={styles.landscapeCard} onPress={() => handleSelectImage(item)}>
+                                        <Image source={{ uri: getIgdbImageUrl(item, 't_screenshot_med') || '' }} style={styles.gridImage} resizeMode="cover" />
                                     </TouchableOpacity>
                                 )}
                             />
@@ -284,29 +243,46 @@ export default function EditGameScreen() {
                     </View>
                 </Modal>
 
-                {/* --- MODAL 2: ESCOLHER A ARTE HORIZONTAL --- */}
-                <Modal visible={isIgdbModalVisible} animationType="slide" presentationStyle="pageSheet">
-                    <View style={styles.modalContainer}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>Escolher Banner</Text>
-                            <TouchableOpacity onPress={() => setIsIgdbModalVisible(false)}>
-                                <Ionicons name="close" size={28} color="#E1E1E6" />
+                {/* MODAL MULTI-SELEÇÃO: Plataforma */}
+                <Modal visible={isPlatformModalVisible} animationType="fade" transparent={true}>
+                    <View style={styles.overlayModal}>
+                        <View style={styles.smallModalContent}>
+                            <Text style={styles.smallModalTitle}>Escolha as Plataformas</Text>
+                            <ScrollView style={{ maxHeight: 300 }}>
+                                {availablePlatforms.map(plat => (
+                                    <TouchableOpacity key={plat} style={styles.optionItem} onPress={() => togglePlatform(plat)}>
+                                        <Text style={[styles.optionText, selectedPlatforms.includes(plat) && { color: '#8257E5', fontWeight: 'bold' }]}>{plat}</Text>
+                                        {selectedPlatforms.includes(plat) && <Ionicons name="checkmark" size={20} color="#8257E5" />}
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                            <TouchableOpacity style={styles.closeOptionButton} onPress={() => setIsPlatformModalVisible(false)}>
+                                <Text style={styles.closeOptionText}>OK</Text>
                             </TouchableOpacity>
                         </View>
-                        <FlatList
-                            data={igdbImages}
-                            keyExtractor={(item) => item}
-                            numColumns={1}
-                            contentContainerStyle={styles.gridContainer}
-                            ListEmptyComponent={<Text style={styles.emptyText}>Nenhuma imagem de banner encontrada.</Text>}
-                            renderItem={({ item }) => (
-                                <TouchableOpacity style={styles.landscapeCard} onPress={() => handleSelectImage(item)}>
-                                    <Image source={{ uri: getIgdbImageUrl(item, 't_screenshot_med') || '' }} style={styles.gridImage} resizeMode="cover" />
-                                </TouchableOpacity>
-                            )}
-                        />
                     </View>
                 </Modal>
+
+                {/* MODAL: Seleção de Status */}
+                <Modal visible={isStatusModalVisible} animationType="fade" transparent={true}>
+                    <View style={styles.overlayModal}>
+                        <View style={styles.smallModalContent}>
+                            <Text style={styles.smallModalTitle}>Status de Jogo</Text>
+                            <ScrollView style={{ maxHeight: 300 }}>
+                                {availableStatuses.map(stat => (
+                                    <TouchableOpacity key={stat} style={styles.optionItem} onPress={() => { setStatus(stat); setIsStatusModalVisible(false); }}>
+                                        <Text style={[styles.optionText, status === stat && { color: '#8257E5', fontWeight: 'bold' }]}>{stat}</Text>
+                                        {status === stat && <Ionicons name="checkmark" size={20} color="#8257E5" />}
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                            <TouchableOpacity style={styles.closeOptionButton} onPress={() => setIsStatusModalVisible(false)}>
+                                <Text style={styles.closeOptionText}>Cancelar</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </Modal>
+
             </ScrollView>
         </SafeAreaView>
     );
@@ -327,30 +303,28 @@ const styles = StyleSheet.create({
     searchButton: { backgroundColor: '#8257E5', paddingHorizontal: 16, paddingVertical: 12, borderTopRightRadius: 8, borderBottomRightRadius: 8, justifyContent: 'center', alignItems: 'center' },
     miniBannerPreview: { width: '100%', height: 100, borderRadius: 8, marginTop: 10, borderWidth: 1, borderColor: '#323238' },
 
+    selectorButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#202024', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 8, borderWidth: 1, borderColor: '#323238' },
+    selectorText: { color: '#FFF', fontSize: 16 },
+    overlayModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+    smallModalContent: { backgroundColor: '#202024', width: '100%', borderRadius: 12, padding: 20, borderWidth: 1, borderColor: '#323238' },
+    smallModalTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' },
+    optionItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#323238' },
+    optionText: { color: '#E1E1E6', fontSize: 16 },
+    closeOptionButton: { marginTop: 16, alignItems: 'center', paddingVertical: 12 },
+    closeOptionText: { color: '#7C7C8A', fontSize: 16, fontWeight: 'bold' },
+
     mediaSelectorContainer: { flexDirection: 'row', gap: 12 },
     mediaButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 14, backgroundColor: '#202024', borderRadius: 8, borderWidth: 1, borderColor: '#323238', gap: 8 },
     mediaButtonActive: { backgroundColor: '#8257E5', borderColor: '#8257E5' },
     mediaButtonText: { color: '#7C7C8A', fontSize: 15, fontWeight: 'bold' },
     mediaButtonTextActive: { color: '#FFF' },
 
-    // Modais
     modalContainer: { flex: 1, backgroundColor: '#121212' },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1, borderBottomColor: '#323238' },
     modalTitle: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },
-    loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    loadingText: { color: '#E1E1E6', marginTop: 16, fontSize: 16 },
-
-    // Lista de Versões
-    listContainer: { padding: 16 },
-    gameListItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#202024', padding: 10, borderRadius: 8, marginBottom: 12 },
-    gameListCover: { width: 45, height: 60, borderRadius: 4, backgroundColor: '#000', marginRight: 12 },
-    gameListInfo: { flex: 1 },
-    gameListTitle: { color: '#FFF', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
-    gameListYear: { color: '#7C7C8A', fontSize: 14 },
-
-    // Galeria de Banners
+    loadingContainer: { paddingVertical: 40, justifyContent: 'center', alignItems: 'center' },
     gridContainer: { padding: 16 },
     landscapeCard: { width: '100%', height: 200, marginBottom: 16, borderRadius: 8, overflow: 'hidden', backgroundColor: '#202024' },
     gridImage: { width: '100%', height: '100%' },
-    emptyText: { color: '#7C7C8A', textAlign: 'center', marginTop: 40, fontSize: 16 }
+    emptyText: { color: '#7C7C8A', textAlign: 'center', marginTop: 40, fontSize: 16 },
 });
