@@ -12,6 +12,10 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_IGDB_CLIENT_ID": "p95ki5cv1ky2z2a9lnwqsjmxa2rpgn",
+        "EXPO_PUBLIC_IGDB_CLIENT_SECRET": "2khymelhpdw712wa57j3g54f79was3"
       }
     },
     "production": {

@@ -130,6 +130,13 @@ export default function NewGameScreen() {
     };
 
     const handleSave = async () => {
+        // --- NOVA VALIDAÇÃO: Impede cadastro sem jogo ---
+        const finalName = gameName || searchQuery;
+        if (!finalName || finalName.trim() === '') {
+            alert("Por favor, busque ou digite o nome de um jogo!");
+            return;
+        }
+
         if (selectedPlatforms.length === 0) {
             alert("Por favor, escolha pelo menos uma plataforma!");
             return;
@@ -139,7 +146,7 @@ export default function NewGameScreen() {
             const newGame: Game = {
                 idGame: Math.floor(Math.random() * 10000),
                 igdbId: selectedGameData?.id,
-                name: gameName || searchQuery,
+                name: finalName, // Usa a variável validada aqui
                 coverUrl: coverUrl || boxArtUrl,
                 boxArtUrl: boxArtUrl,
                 releaseYear: Number(releaseYear) || new Date().getFullYear(),
