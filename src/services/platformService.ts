@@ -1,36 +1,43 @@
-import { Platform } from '../types/Platform';
+const abbreviationMap: Record<string, string> = {
+    'playstation': 'PS',
+    'playstation 1': 'PS1',
+    'playstation 2': 'PS2',
+    'playstation 3': 'PS3',
+    'playstation 4': 'PS4',
+    'playstation 5': 'PS5',
+    'ps vita': 'Vita',
+    'playstation vita': 'Vita',
+    'playstation portable': 'PSP',
+    'nintendo switch': 'Switch',
+    'nintendo switch 2': 'Switch 2',
+    'wii u': 'Wii U',
+    'xbox': 'Xbox',
+    'xbox 360': 'X360',
+    'xbox one': 'XOne',
+    'xbox series x|s': 'XSX|S',
+    'xbox series x': 'XSX',
+    'xbox series s': 'XSS',
+    'pc (microsoft windows)': 'PC',
+    'microsoft windows': 'PC',
+};
 
-export const availablePlatforms: Platform[] = [
-    {
-        idPlatform: 1,
-        name: 'PS5',
-        releaseYear: 2020,
-        manufacturer: 'Sony',
-        description: 'Console de nona geração da Sony.',
-        funFact: 'O controle DualSense possui atuadores de bobina de voz para um feedback tátil ultra preciso.'
-    },
-    {
-        idPlatform: 2,
-        name: 'PS4',
-        releaseYear: 2013,
-        manufacturer: 'Sony'
-    },
-    {
-        idPlatform: 3,
-        name: 'PS3',
-        releaseYear: 2006,
-        manufacturer: 'Sony',
-        funFact: 'O processador Cell do PS3 era tão poderoso que a Força Aérea dos EUA ligou 1.760 deles em rede para criar um supercomputador.'
-    },
-    {
-        idPlatform: 4,
-        name: 'PS Vita',
-        releaseYear: 2011,
-        manufacturer: 'Sony',
-        description: 'Console portátil poderoso com tela OLED na sua primeira versão.',
+export function getPlatformAbbreviation(platformName: string, igdbAbbreviation?: string): string {
+    if (igdbAbbreviation?.trim()) {
+        return igdbAbbreviation.trim();
     }
-];
 
-export function getPlatformById(id: number): Platform | undefined {
-    return availablePlatforms.find(p => p.idPlatform === id);
+    const normalized = platformName.trim().toLowerCase();
+
+    if (abbreviationMap[normalized]) {
+        return abbreviationMap[normalized];
+    }
+
+    if (normalized.startsWith('playstation ')) {
+        const match = normalized.match(/playstation\s+(\d+)/);
+        if (match?.[1]) {
+            return `PS${match[1]}`;
+        }
+    }
+
+    return platformName;
 }

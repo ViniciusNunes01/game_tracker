@@ -1,11 +1,12 @@
+import { getPlatformAbbreviation } from "@/src/services/platformService";
 import { loadGamesFromStorage } from "@/src/services/storageService";
 import { Game } from "@/src/types/Game";
-import { Link, useFocusEffect, router } from "expo-router";
-import React, { useCallback, useState, useMemo, useRef } from "react";
-import { FlatList, StyleSheet, Text, TextInput as RNTextInput, TouchableOpacity, View, Image, ScrollView, Modal, TextInput, Animated } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { router, useFocusEffect } from "expo-router";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { Animated, FlatList, Image, Modal, TextInput as RNTextInput, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
   const [searchText, setSearchText] = useState('');
@@ -214,7 +215,15 @@ export default function HomeScreen() {
         }
         renderItem={({ item }) => {
           const platformText = item.platforms && item.platforms.length > 0
-            ? item.platforms.map(p => typeof p === 'string' ? p : p.name).join(', ')
+            ? item.platforms
+                .map(p => {
+                  if (typeof p === 'string') {
+                    return getPlatformAbbreviation(p);
+                  }
+
+                  return getPlatformAbbreviation(p.name, p.abbreviation);
+                })
+                .join(' • ')
             : 'Variados';
 
           return (

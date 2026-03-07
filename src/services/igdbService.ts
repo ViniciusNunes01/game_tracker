@@ -5,6 +5,58 @@ const CLIENT_SECRET = process.env.EXPO_PUBLIC_IGDB_CLIENT_SECRET;
 
 let accessToken: string | null = null;
 
+export interface IgdbPlatform {
+    id: number;
+    name: string;
+    abbreviation?: string;
+}
+
+export interface IgdbGameResult {
+    id: number;
+    name: string;
+    first_release_date?: number;
+    game_type?: number;
+    category?: number;
+    version_parent?: number;
+    cover?: { image_id?: string };
+    artworks?: Array<{ image_id: string }>;
+    screenshots?: Array<{ image_id: string }>;
+    platforms?: IgdbPlatform[];
+}
+
+export function mergeIgdbGamesByName(games: IgdbGameResult[]): IgdbGameResult[] {
+    const groupedByName = new Map<string, IgdbGameResult>();
+
+    games.forEach((game) => {
+        const key = game.name.toLowerCase().trim();
+        const existing = groupedByName.get(key);
+
+        if (!existing) {
+            groupedByName.set(key, {
+                ...game,
+                platforms: [...(game.platforms || [])],
+            });
+            return;
+        }
+
+        const combinedPlatforms = [...(existing.platforms || []), ...(game.platforms || [])];
+        const uniquePlatforms = combinedPlatforms.filter((platform, index, self) =>
+            index === self.findIndex((p) => p.id === platform.id)
+        );
+
+        const existingDate = existing.first_release_date || Number.MAX_SAFE_INTEGER;
+        const currentDate = game.first_release_date || Number.MAX_SAFE_INTEGER;
+        const canonicalGame = currentDate < existingDate ? game : existing;
+
+        groupedByName.set(key, {
+            ...canonicalGame,
+            platforms: uniquePlatforms,
+        });
+    });
+
+    return Array.from(groupedByName.values());
+}
+
 export async function getIgdbToken() {
     if (accessToken) return accessToken;
 
@@ -19,12 +71,12 @@ export async function getIgdbToken() {
     }
 }
 
-export async function searchGameImages(gameName: string) {
+export async function searchGameImages(gameName: string): Promise<IgdbGameResult[]> {
     const token = await getIgdbToken();
     if (!token) return [];
 
     try {
-        const query = `fields name,first_release_date,game_type,version_parent,cover.image_id,artworks.image_id,screenshots.image_id,platforms.name; search "${gameName}"; limit 50;`;
+        const query = `fields name,first_release_date,game_type,version_parent,cover.image_id,artworks.image_id,screenshots.image_id,platforms.name,platforms.abbreviation; search "${gameName}"; limit 50;`;
 
         const response = await axios({
             url: 'https://api.igdb.com/v4/games',
@@ -55,7 +107,7 @@ export async function searchGameImages(gameName: string) {
         ];
 
         // Filtra jogos válidos considerando variações de enums do IGDB (game_type/category)
-        const filtered = response.data.filter((game: any) => {
+        const filtered = response.data.filter((game: IgdbGameResult) => {
             const normalizedType = game.game_type ?? game.category;
             const validGameTypes = [0, 3, 4, 7, 8, 9, 10];
             const isRemasterByName = /remaster|remastered/i.test(game.name || '');
@@ -94,8 +146,7 @@ export const getGameImagesByIgdbId = async (igdbId: number) => {
                 'Client-ID': CLIENT_ID as string,
                 'Authorization': `Bearer ${token}`,
             },
-            // Adicionado cover.image_id aqui também por segurança!
-            data: `fields cover.image_id, artworks.image_id, screenshots.image_id; where id = ${igdbId}; limit 1;`
+            data: `fields cover.image_id, artworks.image_id, screenshots.image_id, platforms.name, platforms.abbreviation; where id = ${igdbId}; limit 1;`
         });
         return response.data[0];
     } catch (error) {

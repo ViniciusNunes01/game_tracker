@@ -3,11 +3,17 @@ import { getGameImagesByIgdbId, getIgdbImageUrl } from '@/src/services/igdbServi
 import { loadGamesFromStorage, saveGamesToStorage } from '@/src/services/storageService';
 import { Game } from '@/src/types/Game';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
+type SelectablePlatform = {
+    idPlatform: number;
+    name: string;
+    abbreviation?: string;
+};
 
 export default function EditGameScreen() {
     const { idGame } = useLocalSearchParams();
@@ -32,17 +38,15 @@ export default function EditGameScreen() {
     const [isSearching, setIsSearching] = useState(false);
     const [igdbImages, setIgdbImages] = useState<string[]>([]);
 
-    const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
+    const [availablePlatforms, setAvailablePlatforms] = useState<SelectablePlatform[]>([]);
     const [availableStatuses, setAvailableStatuses] = useState<string[]>([]);
     const [isPlatformModalVisible, setIsPlatformModalVisible] = useState(false);
     const [isStatusModalVisible, setIsStatusModalVisible] = useState(false);
 
     useEffect(() => {
         async function loadGameData() {
-            const savedPlatforms = await AsyncStorage.getItem('custom_platforms');
             const savedStatuses = await AsyncStorage.getItem('custom_statuses');
-            if (savedPlatforms) setAvailablePlatforms(JSON.parse(savedPlatforms));
-            else setAvailablePlatforms(['PS5', 'PS4', 'Nintendo Switch', 'PC']);
+            setAvailablePlatforms([]);
             
             if (savedStatuses) setAvailableStatuses(JSON.parse(savedStatuses));
             else setAvailableStatuses(['Backlog', 'Jogando', 'Terminado', 'Platinado', 'Abandonado']);
@@ -68,6 +72,27 @@ export default function EditGameScreen() {
                 if (existingGame.platforms && existingGame.platforms.length > 0) {
                     const platNames = existingGame.platforms.map((p: any) => typeof p === 'string' ? p : p.name);
                     setSelectedPlatforms(platNames);
+
+                    // Fallback para jogos antigos sem IGDB ID: usa as plataformas salvas.
+                    setAvailablePlatforms(
+                        platNames.map((platformName, index) => ({
+                            idPlatform: index + 1,
+                            name: platformName,
+                        }))
+                    );
+                }
+
+                if (existingGame.igdbId) {
+                    const igdbGame = await getGameImagesByIgdbId(existingGame.igdbId);
+                    const igdbPlatforms = (igdbGame?.platforms || []).map((platform: any) => ({
+                        idPlatform: platform.id,
+                        name: platform.name,
+                        abbreviation: platform.abbreviation,
+                    }));
+
+                    if (igdbPlatforms.length > 0) {
+                        setAvailablePlatforms(igdbPlatforms);
+                    }
                 }
             }
             setIsLoading(false);
@@ -101,7 +126,15 @@ export default function EditGameScreen() {
                         personalDescription: description,
                         mediaType: selectedMedia as any,
                         status: status,
-                        platforms: selectedPlatforms.map(p => ({ idPlatform: Math.floor(Math.random() * 100), name: p })),
+                        platforms: selectedPlatforms.map((platformName, index) => {
+                            const matchedPlatform = availablePlatforms.find((platform) => platform.name === platformName);
+
+                            return {
+                                idPlatform: matchedPlatform?.idPlatform ?? index + 1,
+                                name: platformName,
+                                abbreviation: matchedPlatform?.abbreviation,
+                            };
+                        }),
                     };
                 }
                 return g;
@@ -176,12 +209,19 @@ export default function EditGameScreen() {
                 <View style={{ flexDirection: 'row', gap: 16 }}>
                     <View style={[styles.inputGroup, { flex: 1 }]}>
                         <Text style={styles.label}>Plataformas</Text>
-                        <TouchableOpacity style={styles.selectorButton} onPress={() => setIsPlatformModalVisible(true)}>
+                        <TouchableOpacity
+                            style={styles.selectorButton}
+                            onPress={() => setIsPlatformModalVisible(true)}
+                            disabled={availablePlatforms.length === 0}
+                        >
                             <Text style={[styles.selectorText, selectedPlatforms.length === 0 && { color: '#7C7C8A' }]} numberOfLines={1}>
                                 {selectedPlatforms.length > 0 ? selectedPlatforms.join(', ') : "Nenhuma"}
                             </Text>
                             <Ionicons name="chevron-down" size={20} color="#7C7C8A" />
                         </TouchableOpacity>
+                        {availablePlatforms.length === 0 && (
+                            <Text style={styles.helperText}>IGDB nao retornou plataformas para este jogo.</Text>
+                        )}
                     </View>
 
                     <View style={[styles.inputGroup, { flex: 1 }]}>
@@ -250,9 +290,9 @@ export default function EditGameScreen() {
                             <Text style={styles.smallModalTitle}>Escolha as Plataformas</Text>
                             <ScrollView style={{ maxHeight: 300 }}>
                                 {availablePlatforms.map(plat => (
-                                    <TouchableOpacity key={plat} style={styles.optionItem} onPress={() => togglePlatform(plat)}>
-                                        <Text style={[styles.optionText, selectedPlatforms.includes(plat) && { color: '#8257E5', fontWeight: 'bold' }]}>{plat}</Text>
-                                        {selectedPlatforms.includes(plat) && <Ionicons name="checkmark" size={20} color="#8257E5" />}
+                                    <TouchableOpacity key={`${plat.idPlatform}-${plat.name}`} style={styles.optionItem} onPress={() => togglePlatform(plat.name)}>
+                                        <Text style={[styles.optionText, selectedPlatforms.includes(plat.name) && { color: '#8257E5', fontWeight: 'bold' }]}>{plat.name}</Text>
+                                        {selectedPlatforms.includes(plat.name) && <Ionicons name="checkmark" size={20} color="#8257E5" />}
                                     </TouchableOpacity>
                                 ))}
                             </ScrollView>
@@ -305,6 +345,7 @@ const styles = StyleSheet.create({
 
     selectorButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#202024', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 8, borderWidth: 1, borderColor: '#323238' },
     selectorText: { color: '#FFF', fontSize: 16 },
+    helperText: { color: '#7C7C8A', fontSize: 12, marginTop: 6 },
     overlayModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
     smallModalContent: { backgroundColor: '#202024', width: '100%', borderRadius: 12, padding: 20, borderWidth: 1, borderColor: '#323238' },
     smallModalTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' },

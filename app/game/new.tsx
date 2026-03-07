@@ -1,12 +1,18 @@
-import { getIgdbImageUrl, searchGameImages } from '@/src/services/igdbService';
+import { IgdbGameResult, getIgdbImageUrl, mergeIgdbGamesByName, searchGameImages } from '@/src/services/igdbService';
 import { loadGamesFromStorage, saveGamesToStorage } from '@/src/services/storageService';
 import { Game } from '@/src/types/Game';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+
+type SelectablePlatform = {
+    idPlatform: number;
+    name: string;
+    abbreviation?: string;
+};
 
 export default function NewGameScreen() {
     const [gameName, setGameName] = useState('');
@@ -23,24 +29,22 @@ export default function NewGameScreen() {
 
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearchingGames, setIsSearchingGames] = useState(false);
-    const [gameResults, setGameResults] = useState<any[]>([]);
+    const [gameResults, setGameResults] = useState<IgdbGameResult[]>([]);
     const [showDropdown, setShowDropdown] = useState(false);
-    const [selectedGameData, setSelectedGameData] = useState<any | null>(null);
+    const [selectedGameData, setSelectedGameData] = useState<IgdbGameResult | null>(null);
 
     const [isImageModalVisible, setIsImageModalVisible] = useState(false);
     
-    const [availablePlatforms, setAvailablePlatforms] = useState<string[]>([]);
+    const [availablePlatforms, setAvailablePlatforms] = useState<SelectablePlatform[]>([]);
     const [availableStatuses, setAvailableStatuses] = useState<string[]>([]);
     const [isPlatformModalVisible, setIsPlatformModalVisible] = useState(false);
     const [isStatusModalVisible, setIsStatusModalVisible] = useState(false);
 
     useEffect(() => {
         async function loadLists() {
-            const savedPlatforms = await AsyncStorage.getItem('custom_platforms');
             const savedStatuses = await AsyncStorage.getItem('custom_statuses');
-            
-            if (savedPlatforms) setAvailablePlatforms(JSON.parse(savedPlatforms));
-            else setAvailablePlatforms(['PS5', 'PS4', 'Nintendo Switch', 'PC']);
+
+            setAvailablePlatforms([]);
             
             if (savedStatuses) {
                 const parsedStatuses = JSON.parse(savedStatuses);
@@ -60,19 +64,15 @@ export default function NewGameScreen() {
         setGameResults([]);
         try {
             const results = await searchGameImages(searchQuery);
-            const seenNames = new Set();
-            const uniqueResults = results.filter((game: any) => {
-                const normalizedName = game.name.toLowerCase().trim();
-                if (seenNames.has(normalizedName)) return false;
-                seenNames.add(normalizedName);
-                return true;
-            });
-            uniqueResults.sort((a: any, b: any) => {
+            const mergedResults = mergeIgdbGamesByName(results);
+
+            mergedResults.sort((a, b) => {
                 const dateA = a.first_release_date || 9999999999;
                 const dateB = b.first_release_date || 9999999999;
                 return dateA - dateB;
             });
-            setGameResults(uniqueResults);
+
+            setGameResults(mergedResults);
         } catch (error) {
             console.error(error);
             alert("Erro ao buscar jogos.");
@@ -81,7 +81,7 @@ export default function NewGameScreen() {
         }
     };
 
-    const handleSelectGameFromDropdown = (game: any) => {
+    const handleSelectGameFromDropdown = (game: IgdbGameResult) => {
         setSelectedGameData(game);
         setGameName(game.name);
         setSearchQuery(game.name);
@@ -89,6 +89,20 @@ export default function NewGameScreen() {
             const year = new Date(game.first_release_date * 1000).getFullYear();
             setReleaseYear(year.toString());
         }
+
+        const mappedPlatforms: SelectablePlatform[] = (game.platforms || []).map((plat) => ({
+            idPlatform: plat.id,
+            name: plat.name,
+            abbreviation: plat.abbreviation,
+        }));
+
+        const uniquePlatforms = mappedPlatforms.filter((platform, index, self) =>
+            index === self.findIndex((p) => p.idPlatform === platform.idPlatform || p.name === platform.name)
+        );
+
+        setAvailablePlatforms(uniquePlatforms);
+        setSelectedPlatforms([]);
+
         if (game.cover?.image_id) {
             setBoxArtUrl(getIgdbImageUrl(game.cover.image_id, 't_cover_big') || '');
         }
@@ -153,8 +167,16 @@ export default function NewGameScreen() {
                 personalDescription: description,
                 mediaType: selectedMedia as any,
                 status: status,
-                // MAPEA O ARRAY DE STRINGS PARA O ARRAY DE OBJETOS DO TIPO GAME
-                platforms: selectedPlatforms.map(p => ({ idPlatform: Math.floor(Math.random() * 100), name: p })),
+                // Salva a plataforma com o ID oficial do IGDB quando disponivel.
+                platforms: selectedPlatforms.map((platformName, index) => {
+                    const matchedPlatform = availablePlatforms.find((platform) => platform.name === platformName);
+
+                    return {
+                        idPlatform: matchedPlatform?.idPlatform ?? index + 1,
+                        name: platformName,
+                        abbreviation: matchedPlatform?.abbreviation,
+                    };
+                }),
             };
 
             const existingGames = await loadGamesFromStorage();
@@ -174,7 +196,20 @@ export default function NewGameScreen() {
                 <View style={[styles.inputGroup, { zIndex: 10 }]}>
                     <Text style={styles.label}>Buscar Jogo Oficial</Text>
                     <View style={styles.urlInputContainer}>
-                        <TextInput style={styles.urlInput} placeholder="Digite o nome e clique na lupa..." placeholderTextColor="#7C7C8A" value={searchQuery} onChangeText={(text) => { setSearchQuery(text); setShowDropdown(false); }} onSubmitEditing={handleSearchGames} />
+                        <TextInput
+                            style={styles.urlInput}
+                            placeholder="Digite o nome e clique na lupa..."
+                            placeholderTextColor="#7C7C8A"
+                            value={searchQuery}
+                            onChangeText={(text) => {
+                                setSearchQuery(text);
+                                setShowDropdown(false);
+                                setSelectedGameData(null);
+                                setAvailablePlatforms([]);
+                                setSelectedPlatforms([]);
+                            }}
+                            onSubmitEditing={handleSearchGames}
+                        />
                         <TouchableOpacity style={styles.searchButton} onPress={handleSearchGames}>
                             <Ionicons name="search" size={24} color="#FFF" />
                         </TouchableOpacity>
@@ -210,12 +245,19 @@ export default function NewGameScreen() {
                 <View style={{ flexDirection: 'row', gap: 16 }}>
                     <View style={[styles.inputGroup, { flex: 1 }]}>
                         <Text style={styles.label}>Plataformas</Text>
-                        <TouchableOpacity style={styles.selectorButton} onPress={() => setIsPlatformModalVisible(true)}>
+                        <TouchableOpacity
+                            style={styles.selectorButton}
+                            onPress={() => setIsPlatformModalVisible(true)}
+                            disabled={!selectedGameData || availablePlatforms.length === 0}
+                        >
                             <Text style={[styles.selectorText, selectedPlatforms.length === 0 && { color: '#7C7C8A' }]} numberOfLines={1}>
                                 {selectedPlatforms.length > 0 ? selectedPlatforms.join(', ') : "Escolha..."}
                             </Text>
                             <Ionicons name="chevron-down" size={20} color="#7C7C8A" />
                         </TouchableOpacity>
+                        {selectedGameData && availablePlatforms.length === 0 && (
+                            <Text style={styles.helperText}>IGDB nao retornou plataformas para este jogo.</Text>
+                        )}
                     </View>
 
                     <View style={[styles.inputGroup, { flex: 1 }]}>
@@ -285,9 +327,9 @@ export default function NewGameScreen() {
                         <Text style={styles.smallModalTitle}>Escolha as Plataformas</Text>
                         <ScrollView style={{ maxHeight: 300 }}>
                             {availablePlatforms.map(plat => (
-                                <TouchableOpacity key={plat} style={styles.optionItem} onPress={() => togglePlatform(plat)}>
-                                    <Text style={[styles.optionText, selectedPlatforms.includes(plat) && { color: '#8257E5', fontWeight: 'bold' }]}>{plat}</Text>
-                                    {selectedPlatforms.includes(plat) && <Ionicons name="checkmark" size={20} color="#8257E5" />}
+                                <TouchableOpacity key={`${plat.idPlatform}-${plat.name}`} style={styles.optionItem} onPress={() => togglePlatform(plat.name)}>
+                                    <Text style={[styles.optionText, selectedPlatforms.includes(plat.name) && { color: '#8257E5', fontWeight: 'bold' }]}>{plat.name}</Text>
+                                    {selectedPlatforms.includes(plat.name) && <Ionicons name="checkmark" size={20} color="#8257E5" />}
                                 </TouchableOpacity>
                             ))}
                         </ScrollView>
@@ -348,6 +390,7 @@ const styles = StyleSheet.create({
 
     selectorButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#202024', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 8, borderWidth: 1, borderColor: '#323238' },
     selectorText: { color: '#FFF', fontSize: 16 },
+    helperText: { color: '#7C7C8A', fontSize: 12, marginTop: 6 },
     overlayModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
     smallModalContent: { backgroundColor: '#202024', width: '100%', borderRadius: 12, padding: 20, borderWidth: 1, borderColor: '#323238' },
     smallModalTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' },
