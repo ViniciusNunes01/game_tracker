@@ -57,7 +57,7 @@ export default function NewGameScreen() {
         loadLists();
     }, []);
 
-    const handleSearchGames = async () => {
+    const handleSearchGames = React.useCallback(async () => {
         if (!searchQuery) return;
         setIsSearchingGames(true);
         setShowDropdown(true);
@@ -79,7 +79,16 @@ export default function NewGameScreen() {
         } finally {
             setIsSearchingGames(false);
         }
-    };
+    }, [searchQuery]);
+
+    // Debounced search: dispara a busca 600ms após o usuário parar de digitar
+    React.useEffect(() => {
+        if (!searchQuery || searchQuery.trim().length < 2) return;
+        const t = setTimeout(() => {
+            handleSearchGames();
+        }, 600);
+        return () => clearTimeout(t);
+    }, [searchQuery, handleSearchGames]);
 
     const handleSelectGameFromDropdown = (game: IgdbGameResult) => {
         setSelectedGameData(game);

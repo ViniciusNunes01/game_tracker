@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { Animated, FlatList, Image, Modal, TextInput as RNTextInput, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Animated, Dimensions, FlatList, Image, Modal, TextInput as RNTextInput, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
@@ -18,6 +18,7 @@ export default function HomeScreen() {
 
   const [catalogTitle, setCatalogTitle] = useState('Meu Catálogo');
   const titleRef = useRef<RNTextInput>(null);
+  const [dashboardColumns, setDashboardColumns] = useState<number>(2);
 
   // --- ESTADOS DA ANIMAÇÃO RETRÁTIL ---
   const [isFiltersVisible, setIsFiltersVisible] = useState(false);
@@ -32,6 +33,8 @@ export default function HomeScreen() {
 
         const savedTitle = await AsyncStorage.getItem('userCatalogTitle');
         if (savedTitle) setCatalogTitle(savedTitle);
+        const savedColumns = await AsyncStorage.getItem('dashboardColumns');
+        if (savedColumns) setDashboardColumns(Number(savedColumns));
       }
       fetchGames();
     }, [])
@@ -197,10 +200,11 @@ export default function HomeScreen() {
 
       {/* GRADE DE JOGOS */}
       <FlatList
+        key={`cols-${dashboardColumns}`}
         data={displayGames}
         keyExtractor={(item) => item.idGame.toString()}
-        numColumns={2}
-        columnWrapperStyle={styles.row}
+        numColumns={dashboardColumns}
+        columnWrapperStyle={dashboardColumns > 1 ? styles.row : undefined}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
@@ -226,9 +230,11 @@ export default function HomeScreen() {
                 .join(' • ')
             : 'Variados';
 
+          const showInfo = dashboardColumns < 4;
+
           return (
             <TouchableOpacity
-              style={styles.card}
+              style={[styles.card, { width: getCardWidth(dashboardColumns) }]}
               activeOpacity={0.7}
               onPress={() => router.push(`/game/${item.idGame}`)}
             >
@@ -240,14 +246,16 @@ export default function HomeScreen() {
                 />
               </View>
 
-              <View style={styles.cardInfo}>
-                <Text style={styles.gameTitle} numberOfLines={2}>
-                  {item.name}
-                </Text>
-                <Text style={styles.gamePlatform} numberOfLines={1}>
-                  {platformText}
-                </Text>
-              </View>
+              {showInfo && (
+                <View style={styles.cardInfo}>
+                  <Text style={styles.gameTitle} numberOfLines={2}>
+                    {item.name}
+                  </Text>
+                  <Text style={styles.gamePlatform} numberOfLines={1}>
+                    {platformText}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
           );
         }}
@@ -320,7 +328,7 @@ const styles = StyleSheet.create({
 
   listContent: { paddingHorizontal: 16, paddingBottom: 40, paddingTop: 10 },
   row: { justifyContent: 'space-between', marginBottom: 16 },
-  card: { width: '48%', backgroundColor: '#202024', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#323238' },
+  card: { backgroundColor: '#202024', borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: '#323238' },
   imageContainer: { width: '100%', aspectRatio: 3 / 4, backgroundColor: '#000' },
   cardImage: { width: '100%', height: '100%' },
 
@@ -338,3 +346,17 @@ const styles = StyleSheet.create({
   modalFilterItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#202024', padding: 16, borderRadius: 8, marginBottom: 10 },
   modalFilterText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' }
 });
+
+function getCardWidth(columns: number) {
+  const screenWidth = Dimensions.get('window').width;
+  if (!columns || columns <= 1) return screenWidth - 32; // full width minus list padding
+
+  const listHorizontalPadding = 32; // contentContainerStyle paddingHorizontal * 2
+  const availableWidth = screenWidth - listHorizontalPadding;
+
+  const gapPx = 8; // approximate gap between items
+  const totalGaps = Math.max(0, columns - 1) * gapPx;
+
+  const widthPx = Math.floor((availableWidth - totalGaps) / columns);
+  return widthPx;
+}

@@ -1,28 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, Text, View, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useEffect, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function SettingsScreen() {
-  const [platforms, setPlatforms] = useState<string[]>([]);
-  const [newPlatform, setNewPlatform] = useState('');
-
   const [statuses, setStatuses] = useState<string[]>([]);
   const [newStatus, setNewStatus] = useState('');
+  const [dashboardColumns, setDashboardColumns] = useState<number>(2);
 
   // Carrega as listas salvas ao abrir a tela
   useEffect(() => {
     async function loadSettings() {
-      const savedPlatforms = await AsyncStorage.getItem('custom_platforms');
       const savedStatuses = await AsyncStorage.getItem('custom_statuses');
-
-      if (savedPlatforms) {
-        setPlatforms(JSON.parse(savedPlatforms));
-      } else {
-        // Valores padrão caso seja a primeira vez abrindo o app
-        setPlatforms(['PS5', 'PS4', 'Nintendo Switch', 'PC']);
-      }
 
       if (savedStatuses) {
         setStatuses(JSON.parse(savedStatuses));
@@ -30,29 +20,19 @@ export default function SettingsScreen() {
         // Valores padrão
         setStatuses(['Backlog', 'Jogando', 'Terminado', 'Platinado', 'Abandonado']);
       }
+
+      const savedColumns = await AsyncStorage.getItem('dashboardColumns');
+      if (savedColumns) {
+        const n = Number(savedColumns);
+        const clamped = Math.max(2, Math.min(5, Number.isNaN(n) ? 2 : n));
+        setDashboardColumns(clamped);
+      }
     }
     loadSettings();
   }, []);
 
   // --- FUNÇÕES DE PLATAFORMAS ---
-  const handleAddPlatform = async () => {
-    if (!newPlatform.trim()) return;
-    if (platforms.includes(newPlatform.trim())) {
-        Alert.alert("Ops!", "Esta plataforma já existe.");
-        return;
-    }
-    
-    const updated = [...platforms, newPlatform.trim()];
-    setPlatforms(updated);
-    setNewPlatform('');
-    await AsyncStorage.setItem('custom_platforms', JSON.stringify(updated));
-  };
-
-  const handleRemovePlatform = async (item: string) => {
-    const updated = platforms.filter(p => p !== item);
-    setPlatforms(updated);
-    await AsyncStorage.setItem('custom_platforms', JSON.stringify(updated));
-  };
+  
 
   // --- FUNÇÕES DE STATUS ---
   const handleAddStatus = async () => {
@@ -74,6 +54,13 @@ export default function SettingsScreen() {
     await AsyncStorage.setItem('custom_statuses', JSON.stringify(updated));
   };
 
+  // --- DASHBOARD COLUMNS ---
+  const changeDashboardColumns = async (columns: number) => {
+    const clamped = Math.max(2, Math.min(5, columns));
+    setDashboardColumns(clamped);
+    await AsyncStorage.setItem('dashboardColumns', String(clamped));
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -82,39 +69,7 @@ export default function SettingsScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         
-        {/* --- SEÇÃO DE PLATAFORMAS --- */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Ionicons name="hardware-chip-outline" size={24} color="#8257E5" />
-            <Text style={styles.sectionTitle}>Minhas Plataformas</Text>
-          </View>
-          <Text style={styles.sectionDescription}>Adicione os consoles que você possui para usar no cadastro de jogos.</Text>
-          
-          <View style={styles.inputRow}>
-            <TextInput 
-              style={styles.input} 
-              placeholder="Ex: Xbox Series X..." 
-              placeholderTextColor="#7C7C8A"
-              value={newPlatform}
-              onChangeText={setNewPlatform}
-              onSubmitEditing={handleAddPlatform}
-            />
-            <TouchableOpacity style={styles.addButton} onPress={handleAddPlatform}>
-              <Ionicons name="add" size={24} color="#FFF" />
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.tagsContainer}>
-            {platforms.map(plat => (
-              <View key={plat} style={styles.tag}>
-                <Text style={styles.tagText}>{plat}</Text>
-                <TouchableOpacity onPress={() => handleRemovePlatform(plat)}>
-                  <Ionicons name="close-circle" size={20} color="#7C7C8A" />
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        </View>
+        {/* Platforms are now pulled from IGDB at game registration; no manual platform list needed. */}
 
         {/* --- SEÇÃO DE STATUS --- */}
         <View style={styles.section}>
@@ -159,6 +114,31 @@ export default function SettingsScreen() {
           <Text style={styles.sectionDescription}>Exportação do catálogo e configurações de DLCs chegarão em atualizações futuras.</Text>
         </View>
 
+        {/* --- SEÇÃO: DASHBOARD DENSITY --- */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="grid-outline" size={24} color="#8257E5" />
+            <Text style={styles.sectionTitle}>Dashboard</Text>
+          </View>
+          <Text style={styles.sectionDescription}>Ajuste quantos títulos aparecem por linha na tela inicial.</Text>
+
+          <View style={styles.columnsRow}>
+            {[2, 3, 4, 5].map((c, idx, arr) => (
+              <TouchableOpacity
+                key={c}
+                onPress={() => changeDashboardColumns(c)}
+                style={[
+                  styles.columnButton,
+                  dashboardColumns === c && styles.columnButtonActive,
+                  { marginRight: idx === arr.length - 1 ? 0 : 10 }
+                ]}
+              >
+                <Text style={[styles.columnButtonText, dashboardColumns === c && { color: '#FFF' }]}>{c} por linha</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -181,5 +161,10 @@ const styles = StyleSheet.create({
 
   tagsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   tag: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#121212', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, gap: 8, borderWidth: 1, borderColor: '#323238' },
-  tagText: { color: '#E1E1E6', fontSize: 14, fontWeight: '600' }
+  tagText: { color: '#E1E1E6', fontSize: 14, fontWeight: '600' },
+  columnButton: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 8, borderWidth: 1, borderColor: '#323238', backgroundColor: 'transparent', marginBottom: 8 },
+  columnButtonActive: { backgroundColor: '#8257E5', borderColor: '#8257E5' },
+  columnButtonText: { color: '#E1E1E6', fontWeight: 'bold' }
+  ,
+  columnsRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap' }
 });

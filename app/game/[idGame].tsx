@@ -1,9 +1,10 @@
+import { getExpansionsByIgdbId, getIgdbImageUrl } from '@/src/services/igdbService';
+import { deleteGameFromStorage } from "@/src/services/storageService";
+import { Game } from "@/src/types/Game";
 import { Link, router, Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, Alert, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { getGameById } from "../../src/services/gameService";
-import { useCallback, useState } from "react";
-import { Game } from "@/src/types/Game";
-import { deleteGameFromStorage } from "@/src/services/storageService";
 
 export default function GameDetail() {
 
@@ -13,6 +14,7 @@ export default function GameDetail() {
 
     const [game, setGame] = useState<Game | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const [expansions, setExpansions] = useState<any[]>([]);
 
     useFocusEffect(
         useCallback(() => {
@@ -20,6 +22,15 @@ export default function GameDetail() {
                 const foundGame = await getGameById(gameId);
                 setGame(foundGame || null);
                 setIsLoading(false);
+                // carrega expansões via IGDB quando houver igdbId
+                if (foundGame?.igdbId) {
+                    const exps = await getExpansionsByIgdbId(foundGame.igdbId);
+                    // marca se possui a expansao comparando igdbId salvo no storage
+                    const savedGames = await import('../../src/services/storageService').then(m => m.loadGamesFromStorage());
+                    const ownedIds = new Set(savedGames.map((g: any) => g.igdbId).filter(Boolean));
+                    const mapped = exps.map((e: any) => ({ ...e, owned: ownedIds.has(e.id) }));
+                    setExpansions(mapped);
+                }
             }
             fetchGame();
         }, [gameId])
@@ -126,6 +137,23 @@ export default function GameDetail() {
                     <Text style={[styles.description, { fontStyle: 'italic', color: '#7C7C8A' }]}>
                         Nenhuma anotação salva para este jogo.
                     </Text>
+                )}
+
+                {expansions.length > 0 && (
+                    <>
+                        <Text style={[styles.sectionTitle, { marginTop: 8 }]}>Expansões / DLCs</Text>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 12 }}>
+                            {expansions.map((exp) => (
+                                <TouchableOpacity key={exp.id} style={{ marginRight: 12 }} onPress={() => router.push(`/game/expansion/${exp.id}`)}>
+                                    <Image
+                                        source={{ uri: getIgdbImageUrl(exp.cover?.image_id, 't_cover_big') || undefined }}
+                                        style={[{ width: 100, height: 140, borderRadius: 8, borderWidth: 1, borderColor: '#323238', backgroundColor: '#000' }, !exp.owned && { opacity: 0.35, borderColor: '#444' }]}
+                                    />
+                                    <Text style={{ color: exp.owned ? '#FFF' : '#7C7C8A', width: 100, marginTop: 6 }} numberOfLines={1}>{exp.name}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </>
                 )}
 
                 <View style={styles.footer}>
@@ -235,3 +263,6 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
     }
 });
+
+// estilos para expansoes
+// expansion styles intentionally inline in JSX to avoid TS typing conflicts

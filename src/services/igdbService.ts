@@ -1,5 +1,6 @@
 import axios from 'axios';
 
+
 const CLIENT_ID = process.env.EXPO_PUBLIC_IGDB_CLIENT_ID;
 const CLIENT_SECRET = process.env.EXPO_PUBLIC_IGDB_CLIENT_SECRET;
 
@@ -108,17 +109,19 @@ export async function searchGameImages(gameName: string): Promise<IgdbGameResult
 
         // Filtra jogos válidos considerando variações de enums do IGDB (game_type/category)
         const filtered = response.data.filter((game: IgdbGameResult) => {
-            const normalizedType = game.game_type ?? game.category;
-            const validGameTypes = [0, 3, 4, 7, 8, 9, 10];
-            const isRemasterByName = /remaster|remastered/i.test(game.name || '');
-            const isValidType = validGameTypes.includes(normalizedType) || isRemasterByName;
-            const hasVersionParent = !!game.version_parent;
-            const matchesExcludePattern = excludePatterns.some(pattern => pattern.test(game.name));
+                const normalizedType = game.game_type ?? game.category;
+                const validGameTypes = [0, 3, 4, 7, 8, 9, 10];
+                const isRemasterByName = /remaster|remastered/i.test(game.name || '');
 
-            const allowsVersionParent = [3, 4, 7, 8, 9, 10].includes(normalizedType) || isRemasterByName;
-            const shouldExclude = hasVersionParent && !allowsVersionParent;
+                // Treat missing/undefined type as acceptable (IGDB sometimes omits these fields)
+                const isValidType = (typeof normalizedType === 'number' ? validGameTypes.includes(normalizedType) : true) || isRemasterByName;
+                const hasVersionParent = !!game.version_parent;
+                const matchesExcludePattern = excludePatterns.some(pattern => pattern.test(game.name));
 
-            return isValidType && !shouldExclude && !matchesExcludePattern;
+                const allowsVersionParent = (typeof normalizedType === 'number' && [3, 4, 7, 8, 9, 10].includes(normalizedType)) || isRemasterByName;
+                const shouldExclude = hasVersionParent && !allowsVersionParent;
+
+                return isValidType && !shouldExclude && !matchesExcludePattern;
         });
 
         return filtered;
@@ -127,10 +130,42 @@ export async function searchGameImages(gameName: string): Promise<IgdbGameResult
     }
 }
 
-export function getIgdbImageUrl(imageId: string, size: string = 't_cover_big') {
+export function getIgdbImageUrl(imageId?: string, size: string = 't_cover_big') {
     if (!imageId) return null;
     return `https://images.igdb.com/igdb/image/upload/${size}/${imageId}.jpg`;
 }
+
+export interface IgdbExpansion {
+    id: number;
+    name: string;
+    cover?: { image_id?: string };
+}
+
+// Busca expansões (DLCs) relacionadas ao jogo pelo IGDB ID
+export const getExpansionsByIgdbId = async (igdbId: number): Promise<IgdbExpansion[]> => {
+    const token = await getIgdbToken();
+    if (!token) return [];
+
+    try {
+        const response = await axios({
+            url: 'https://api.igdb.com/v4/games',
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Client-ID': CLIENT_ID as string,
+                'Authorization': `Bearer ${token}`,
+            },
+            data: `fields expansions.name, expansions.id, expansions.cover.image_id; where id = ${igdbId}; limit 1;`
+        });
+
+        const game = response.data && response.data[0];
+        if (!game || !game.expansions) return [];
+
+        return game.expansions as IgdbExpansion[];
+    } catch (error) {
+        return [];
+    }
+};
 
 // Nova função: Busca cirúrgica pelo ID exato do jogo
 export const getGameImagesByIgdbId = async (igdbId: number) => {
