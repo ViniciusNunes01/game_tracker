@@ -1,11 +1,11 @@
 import { IgdbGameResult, getIgdbImageUrl, mergeIgdbGamesByName, searchGameImages } from '@/src/services/igdbService';
-import { loadGamesFromStorage, saveGamesToStorage } from '@/src/services/storageService';
+import { loadGamesFromStorage, loadWishlistFromStorage, saveGamesToStorage, saveWishlistToStorage } from '@/src/services/storageService';
 import { Game } from '@/src/types/Game';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 type SelectablePlatform = {
@@ -20,10 +20,10 @@ export default function NewGameScreen() {
     const [releaseYear, setReleaseYear] = useState('');
     const [description, setDescription] = useState('');
     const [selectedMedia, setSelectedMedia] = useState<string[]>([]);
-    
+
     // --- NOVO: ARRAY DE PLATAFORMAS ---
     const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
-    
+
     const [boxArtUrl, setBoxArtUrl] = useState('');
     const [coverUrl, setCoverUrl] = useState('');
 
@@ -35,7 +35,7 @@ export default function NewGameScreen() {
     const [isGameConfirmed, setIsGameConfirmed] = useState(false);
 
     const [isImageModalVisible, setIsImageModalVisible] = useState(false);
-    
+
     const [availablePlatforms, setAvailablePlatforms] = useState<SelectablePlatform[]>([]);
     const [availableStatuses, setAvailableStatuses] = useState<string[]>([]);
     const [isPlatformModalVisible, setIsPlatformModalVisible] = useState(false);
@@ -46,7 +46,7 @@ export default function NewGameScreen() {
             const savedStatuses = await AsyncStorage.getItem('custom_statuses');
 
             setAvailablePlatforms([]);
-            
+
             if (savedStatuses) {
                 const parsedStatuses = JSON.parse(savedStatuses);
                 setAvailableStatuses(parsedStatuses);
@@ -164,7 +164,6 @@ export default function NewGameScreen() {
     };
 
     const handleSave = async () => {
-        // --- NOVA VALIDAÇÃO: Impede cadastro sem jogo ---
         const finalName = gameName || searchQuery;
         if (!finalName || finalName.trim() === '') {
             alert("Por favor, busque ou digite o nome de um jogo!");
@@ -177,20 +176,43 @@ export default function NewGameScreen() {
         }
 
         try {
+            // 1. CARREGA OS JOGOS E VERIFICA DUPLICIDADE
+            const existingGames = await loadGamesFromStorage();
+
+            // Checa se já existe um jogo com o mesmo IGDB ID ou mesmo nome exato
+            const isDuplicate = existingGames.some(g =>
+                (selectedGameData?.id && g.igdbId === selectedGameData.id) ||
+                (g.name.toLowerCase() === finalName.toLowerCase())
+            );
+
+            if (isDuplicate) {
+                Alert.alert(
+                    "Jogo já cadastrado",
+                    "Este jogo já faz parte da sua coleção!",
+                    [
+                        {
+                            text: "OK",
+                            // Quando o usuário apertar OK, a tela atual fecha e volta para a principal
+                            onPress: () => router.back()
+                        }
+                    ]
+                );
+                return; // Trava a execução do restante da função
+            }
+
+            // 2. CRIA O NOVO JOGO
             const newGame: Game = {
                 idGame: Math.floor(Math.random() * 10000),
                 igdbId: selectedGameData?.id,
-                name: finalName, // Usa a variável validada aqui
+                name: finalName,
                 coverUrl: coverUrl || boxArtUrl,
                 boxArtUrl: boxArtUrl,
                 releaseYear: Number(releaseYear) || new Date().getFullYear(),
                 personalDescription: description,
                 mediaType: selectedMedia as any,
                 status: status,
-                // Salva a plataforma com o ID oficial do IGDB quando disponivel.
                 platforms: selectedPlatforms.map((platformName, index) => {
                     const matchedPlatform = availablePlatforms.find((platform) => platform.name === platformName);
-
                     return {
                         idPlatform: matchedPlatform?.idPlatform ?? index + 1,
                         name: platformName,
@@ -199,9 +221,25 @@ export default function NewGameScreen() {
                 }),
             };
 
-            const existingGames = await loadGamesFromStorage();
+            // 3. SALVA O NOVO JOGO NA COLEÇÃO
             existingGames.push(newGame);
             await saveGamesToStorage(existingGames);
+
+            // 4. REMOVE DA WISHLIST (CASO ESTEJA LÁ)
+            const currentWishlist = await loadWishlistFromStorage();
+
+            // Filtra a wishlist removendo o jogo que tem o mesmo IGDB ID ou o mesmo nome
+            const updatedWishlist = currentWishlist.filter(g =>
+                !(selectedGameData?.id && g.igdbId === selectedGameData.id) &&
+                !(g.name.toLowerCase() === finalName.toLowerCase())
+            );
+
+            // Se o tamanho da lista mudou, é porque o jogo estava lá. Então salvamos a nova wishlist.
+            if (updatedWishlist.length !== currentWishlist.length) {
+                await saveWishlistToStorage(updatedWishlist);
+            }
+
+            // 5. VOLTA PARA A TELA ANTERIOR
             router.back();
         } catch (error) {
             console.error("Erro ao salvar:", error);
@@ -230,7 +268,7 @@ export default function NewGameScreen() {
                     </View>
                     {showDropdown && (
                         <ScrollView style={styles.dropdownContainer} nestedScrollEnabled={true} keyboardShouldPersistTaps="handled">
-                            {isSearchingGames ? ( <ActivityIndicator size="small" color="#8257E5" style={{ padding: 20 }} /> ) : gameResults.length > 0 ? (
+                            {isSearchingGames ? (<ActivityIndicator size="small" color="#8257E5" style={{ padding: 20 }} />) : gameResults.length > 0 ? (
                                 gameResults.map((game) => (
                                     <TouchableOpacity key={game.id} style={styles.dropdownItem} onPress={() => handleSelectGameFromDropdown(game)}>
                                         <Image source={{ uri: getIgdbImageUrl(game.cover?.image_id, 't_cover_small') || 'https://via.placeholder.com/45x60.png?text=Sem+Capa' }} style={styles.dropdownCover} />
@@ -240,7 +278,7 @@ export default function NewGameScreen() {
                                         </View>
                                     </TouchableOpacity>
                                 ))
-                            ) : ( <Text style={styles.dropdownEmpty}>Nenhum jogo encontrado.</Text> )}
+                            ) : (<Text style={styles.dropdownEmpty}>Nenhum jogo encontrado.</Text>)}
                         </ScrollView>
                     )}
                 </View>
@@ -253,7 +291,7 @@ export default function NewGameScreen() {
                             <Ionicons name="image" size={24} color="#FFF" />
                         </TouchableOpacity>
                     </View>
-                    {coverUrl !== '' && ( <Image source={{ uri: coverUrl }} style={styles.miniBannerPreview} resizeMode="cover" /> )}
+                    {coverUrl !== '' && (<Image source={{ uri: coverUrl }} style={styles.miniBannerPreview} resizeMode="cover" />)}
                 </View>
 
                 <View style={{ flexDirection: 'row', gap: 16 }}>
