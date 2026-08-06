@@ -32,6 +32,7 @@ export default function NewGameScreen() {
     const [gameResults, setGameResults] = useState<IgdbGameResult[]>([]);
     const [showDropdown, setShowDropdown] = useState(false);
     const [selectedGameData, setSelectedGameData] = useState<IgdbGameResult | null>(null);
+    const [isGameConfirmed, setIsGameConfirmed] = useState(false);
 
     const [isImageModalVisible, setIsImageModalVisible] = useState(false);
     
@@ -58,7 +59,7 @@ export default function NewGameScreen() {
     }, []);
 
     const handleSearchGames = React.useCallback(async () => {
-        if (!searchQuery) return;
+        if (!searchQuery.trim() || isGameConfirmed) return;
         setIsSearchingGames(true);
         setShowDropdown(true);
         setGameResults([]);
@@ -79,21 +80,22 @@ export default function NewGameScreen() {
         } finally {
             setIsSearchingGames(false);
         }
-    }, [searchQuery]);
+    }, [searchQuery, isGameConfirmed]);
 
     // Debounced search: dispara a busca 600ms após o usuário parar de digitar
     React.useEffect(() => {
-        if (!searchQuery || searchQuery.trim().length < 2) return;
+        if (!searchQuery || searchQuery.trim().length < 2 || isGameConfirmed) return;
         const t = setTimeout(() => {
             handleSearchGames();
         }, 600);
         return () => clearTimeout(t);
-    }, [searchQuery, handleSearchGames]);
+    }, [searchQuery, handleSearchGames, isGameConfirmed]);
 
     const handleSelectGameFromDropdown = (game: IgdbGameResult) => {
         setSelectedGameData(game);
         setGameName(game.name);
         setSearchQuery(game.name);
+        setIsGameConfirmed(true);
         if (game.first_release_date) {
             const year = new Date(game.first_release_date * 1000).getFullYear();
             setReleaseYear(year.toString());
@@ -144,6 +146,15 @@ export default function NewGameScreen() {
     const toggleMedia = (type: string) => {
         if (selectedMedia.includes(type)) setSelectedMedia(selectedMedia.filter(m => m !== type));
         else setSelectedMedia([...selectedMedia, type]);
+    };
+
+    const handleSearchQueryChange = (text: string) => {
+        setSearchQuery(text);
+        setShowDropdown(false);
+        setSelectedGameData(null);
+        setIsGameConfirmed(false);
+        setAvailablePlatforms([]);
+        setSelectedPlatforms([]);
     };
 
     // --- NOVA: FUNÇÃO PARA MÚLTIPLAS PLATAFORMAS ---
@@ -210,13 +221,7 @@ export default function NewGameScreen() {
                             placeholder="Digite o nome e clique na lupa..."
                             placeholderTextColor="#7C7C8A"
                             value={searchQuery}
-                            onChangeText={(text) => {
-                                setSearchQuery(text);
-                                setShowDropdown(false);
-                                setSelectedGameData(null);
-                                setAvailablePlatforms([]);
-                                setSelectedPlatforms([]);
-                            }}
+                            onChangeText={handleSearchQueryChange}
                             onSubmitEditing={handleSearchGames}
                         />
                         <TouchableOpacity style={styles.searchButton} onPress={handleSearchGames}>
@@ -397,8 +402,8 @@ const styles = StyleSheet.create({
     dropdownEmpty: { color: '#7C7C8A', padding: 16, textAlign: 'center' },
     miniBannerPreview: { width: '100%', height: 100, borderRadius: 8, marginTop: 10, borderWidth: 1, borderColor: '#323238' },
 
-    selectorButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#202024', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 8, borderWidth: 1, borderColor: '#323238' },
-    selectorText: { color: '#FFF', fontSize: 16 },
+    selectorButton: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#202024', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: '#323238', minHeight: 48 },
+    selectorText: { color: '#FFF', fontSize: 16, lineHeight: 20, includeFontPadding: false, textAlignVertical: 'center' },
     helperText: { color: '#7C7C8A', fontSize: 12, marginTop: 6 },
     overlayModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
     smallModalContent: { backgroundColor: '#202024', width: '100%', borderRadius: 12, padding: 20, borderWidth: 1, borderColor: '#323238' },
@@ -409,9 +414,9 @@ const styles = StyleSheet.create({
     closeOptionText: { color: '#7C7C8A', fontSize: 16, fontWeight: 'bold' },
 
     mediaSelectorContainer: { flexDirection: 'row', gap: 12 },
-    mediaButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 14, backgroundColor: '#202024', borderRadius: 8, borderWidth: 1, borderColor: '#323238', gap: 8 },
+    mediaButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, paddingHorizontal: 14, backgroundColor: '#202024', borderRadius: 8, borderWidth: 1, borderColor: '#323238', gap: 8, minHeight: 48 },
     mediaButtonActive: { backgroundColor: '#8257E5', borderColor: '#8257E5' },
-    mediaButtonText: { color: '#7C7C8A', fontSize: 15, fontWeight: 'bold' },
+    mediaButtonText: { color: '#7C7C8A', fontSize: 15, fontWeight: 'bold', lineHeight: 18, includeFontPadding: false, textAlignVertical: 'center' },
     mediaButtonTextActive: { color: '#FFF' },
 
     modalContainer: { flex: 1, backgroundColor: '#121212' },

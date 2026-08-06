@@ -1,11 +1,11 @@
 import { getPlatformAbbreviation } from "@/src/services/platformService";
-import { loadGamesFromStorage } from "@/src/services/storageService";
+import { incrementRouletteAcceptedCount, loadGamesFromStorage, loadRouletteActiveGameId, loadRouletteStats, resetRouletteAcceptedCount, saveRouletteActiveGameId, updateGameStatusInStorage } from "@/src/services/storageService";
 import { Game } from "@/src/types/Game";
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { Animated, Dimensions, FlatList, Image, Modal, TextInput as RNTextInput, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, Animated, Dimensions, FlatList, Image, Modal, TextInput as RNTextInput, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
@@ -19,6 +19,22 @@ export default function HomeScreen() {
   const [catalogTitle, setCatalogTitle] = useState('Meu Catálogo');
   const titleRef = useRef<RNTextInput>(null);
   const [dashboardColumns, setDashboardColumns] = useState<number>(2);
+  const [rouletteAcceptedCount, setRouletteAcceptedCount] = useState(0);
+  const [rouletteActiveGameId, setRouletteActiveGameId] = useState<number | null>(null);
+
+  const [isRouletteModalVisible, setIsRouletteModalVisible] = useState(false);
+  const [isRouletteSpinning, setIsRouletteSpinning] = useState(false);
+  const [roulettePreviewGame, setRoulettePreviewGame] = useState<Game | null>(null);
+  const [rouletteResultGame, setRouletteResultGame] = useState<Game | null>(null);
+
+  const [rouletteStatusFilters, setRouletteStatusFilters] = useState<string[]>([]);
+  const [rouletteMediaFilter, setRouletteMediaFilter] = useState<'all' | 'physical' | 'digital'>('all');
+  const [roulettePlatformFilter, setRoulettePlatformFilter] = useState('Todos');
+
+  const roulettePulse = useRef(new Animated.Value(1)).current;
+  const rouletteIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const rouletteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const roulettePulseRef = useRef<Animated.CompositeAnimation | null>(null);
 
   // --- ESTADOS DA ANIMAÇÃO RETRÁTIL ---
   const [isFiltersVisible, setIsFiltersVisible] = useState(false);
@@ -35,6 +51,12 @@ export default function HomeScreen() {
         if (savedTitle) setCatalogTitle(savedTitle);
         const savedColumns = await AsyncStorage.getItem('dashboardColumns');
         if (savedColumns) setDashboardColumns(Number(savedColumns));
+
+        const rouletteStats = await loadRouletteStats();
+        setRouletteAcceptedCount(rouletteStats.acceptedCount);
+
+        const activeRouletteGameId = await loadRouletteActiveGameId();
+        setRouletteActiveGameId(activeRouletteGameId);
       }
       fetchGames();
     }, [])
@@ -48,6 +70,36 @@ export default function HomeScreen() {
     const uniquePlatforms = Array.from(new Set(allPlatforms));
     return ['Física', 'Digital', ...uniquePlatforms];
   }, [myGames]);
+
+  const rouletteStatusOptions = useMemo(() => {
+    return Array.from(new Set(myGames.map(g => g.status).filter(Boolean))) as string[];
+  }, [myGames]);
+
+  const roulettePlatformOptions = useMemo(() => {
+    const allPlatforms = myGames.flatMap(g =>
+      g.platforms?.map(p => typeof p === 'string' ? p : p.name) || []
+    ).filter(Boolean) as string[];
+
+    return ['Todos', ...Array.from(new Set(allPlatforms))];
+  }, [myGames]);
+
+  const currentPlayingGames = useMemo(() => {
+    return myGames.filter((game) => (game.status || '').toLowerCase().includes('jogando'));
+  }, [myGames]);
+
+  const rouletteActiveGame = useMemo(() => {
+    return myGames.find((game) => game.idGame === rouletteActiveGameId) || null;
+  }, [myGames, rouletteActiveGameId]);
+
+  const rouletteHeroSubtitle = useMemo(() => {
+    const highlightedGame = rouletteActiveGame || currentPlayingGames[0] || null;
+
+    if (!highlightedGame) {
+      return 'Nenhum jogo marcado como Jogando no momento.';
+    }
+
+    return `Jogando agora: ${highlightedGame.name}`;
+  }, [currentPlayingGames, rouletteActiveGame]);
 
   const displayGames = useMemo(() => {
     let filtered = myGames.filter((game) =>
@@ -67,6 +119,8 @@ export default function HomeScreen() {
     return filtered;
   }, [myGames, searchText, activeFolder]);
 
+  const roulettePreviewImage = roulettePreviewGame?.boxArtUrl || roulettePreviewGame?.coverUrl;
+
   const handleAddFilter = (filter: string) => {
     if (!userFilters.includes(filter)) {
       setUserFilters([...userFilters, filter]);
@@ -80,6 +134,124 @@ export default function HomeScreen() {
       if (activeFolder === filterToRemove) {
           setActiveFolder('Todos');
       }
+  };
+
+  const getRouletteCandidates = useCallback(() => {
+    return myGames.filter((game) => {
+      if (rouletteStatusFilters.length > 0 && !rouletteStatusFilters.includes(game.status)) {
+        return false;
+      }
+
+      if (rouletteMediaFilter !== 'all' && game.mediaType !== rouletteMediaFilter) {
+        return false;
+      }
+
+      if (roulettePlatformFilter !== 'Todos') {
+        const gamePlatforms = game.platforms?.map(p => typeof p === 'string' ? p : p.name) || [];
+        if (!gamePlatforms.includes(roulettePlatformFilter)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [myGames, rouletteMediaFilter, roulettePlatformFilter, rouletteStatusFilters]);
+
+  const clearRouletteTimers = useCallback(() => {
+    if (rouletteIntervalRef.current) {
+      clearInterval(rouletteIntervalRef.current);
+      rouletteIntervalRef.current = null;
+    }
+
+    if (rouletteTimeoutRef.current) {
+      clearTimeout(rouletteTimeoutRef.current);
+      rouletteTimeoutRef.current = null;
+    }
+
+    roulettePulseRef.current?.stop();
+    roulettePulse.setValue(1);
+  }, [roulettePulse]);
+
+  const openRoulette = () => {
+    setIsRouletteModalVisible(true);
+    setRouletteResultGame(null);
+    setIsRouletteSpinning(false);
+  };
+
+  const startRoulette = () => {
+    const candidates = getRouletteCandidates();
+
+    if (candidates.length === 0) {
+      alert('Nenhum jogo encontrado com esses filtros.');
+      return;
+    }
+
+    clearRouletteTimers();
+    setRouletteResultGame(null);
+    setIsRouletteSpinning(true);
+
+    const pickRandomGame = () => candidates[Math.floor(Math.random() * candidates.length)];
+    setRoulettePreviewGame(pickRandomGame());
+
+    roulettePulseRef.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(roulettePulse, { toValue: 1.04, duration: 180, useNativeDriver: true }),
+        Animated.timing(roulettePulse, { toValue: 0.98, duration: 180, useNativeDriver: true }),
+      ])
+    );
+    roulettePulseRef.current.start();
+
+    rouletteIntervalRef.current = setInterval(() => {
+      setRoulettePreviewGame(pickRandomGame());
+    }, 110);
+
+    rouletteTimeoutRef.current = setTimeout(() => {
+      clearRouletteTimers();
+      const finalGame = pickRandomGame();
+      setRoulettePreviewGame(finalGame);
+      setRouletteResultGame(finalGame);
+      setIsRouletteSpinning(false);
+    }, 1800);
+  };
+
+  const acceptRouletteGame = async () => {
+    if (!rouletteResultGame) return;
+
+    await updateGameStatusInStorage(rouletteResultGame.idGame, 'Jogando');
+    await saveRouletteActiveGameId(rouletteResultGame.idGame);
+
+    const nextCount = await incrementRouletteAcceptedCount();
+    setRouletteAcceptedCount(nextCount);
+    setRouletteActiveGameId(rouletteResultGame.idGame);
+    setMyGames(prevGames => prevGames.map((game) => (
+      game.idGame === rouletteResultGame.idGame ? { ...game, status: 'Jogando' } : game
+    )));
+    setIsRouletteModalVisible(false);
+    router.push(`/game/${rouletteResultGame.idGame}`);
+  };
+
+  const handleResetRouletteCounter = () => {
+    Alert.alert(
+      'Zerar contador',
+      'Quer zerar o contador de jogos aceitos na roleta?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Zerar',
+          style: 'destructive',
+          onPress: async () => {
+            const nextCount = await resetRouletteAcceptedCount();
+            setRouletteAcceptedCount(nextCount);
+          },
+        },
+      ]
+    );
+  };
+
+  const resetRouletteFilters = () => {
+    setRouletteStatusFilters([]);
+    setRouletteMediaFilter('all');
+    setRoulettePlatformFilter('Todos');
   };
 
   const handleTitleChange = async (text: string) => {
@@ -148,6 +320,20 @@ export default function HomeScreen() {
         </View>
       </View>
 
+      <TouchableOpacity style={styles.rouletteHeroCard} onPress={openRoulette} activeOpacity={0.85}>
+        <View style={styles.rouletteHeroTextBlock}>
+          <Text style={styles.rouletteHeroTitle}>Escolher jogo aleatório</Text>
+          <Text style={styles.rouletteHeroSubtitle} numberOfLines={2}>
+            {rouletteHeroSubtitle}
+          </Text>
+        </View>
+
+        <View style={styles.rouletteHeroCounter}>
+          <Text style={styles.rouletteHeroCounterValue}>{rouletteAcceptedCount}</Text>
+          <Text style={styles.rouletteHeroCounterLabel}>aceitos</Text>
+        </View>
+      </TouchableOpacity>
+
       {/* GAVETA ANIMADA DE BUSCA E FILTROS */}
       <Animated.View style={[styles.collapsibleContainer, { height: filterHeight, opacity: filterOpacity }]}>
         <View style={styles.searchSection}>
@@ -196,6 +382,10 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </ScrollView>
         </View>
+
+        <TouchableOpacity style={styles.resetRouletteCounterButton} onPress={handleResetRouletteCounter} activeOpacity={0.8}>
+          <Text style={styles.resetRouletteCounterText}>Zerar contador da roleta</Text>
+        </TouchableOpacity>
       </Animated.View>
 
       {/* GRADE DE JOGOS */}
@@ -291,6 +481,110 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
+      {/* MODAL: Roleta */}
+      <Modal visible={isRouletteModalVisible} animationType="fade" transparent={true} onRequestClose={() => setIsRouletteModalVisible(false)}>
+        <View style={styles.rouletteOverlay}>
+          <Animated.View style={[styles.rouletteModalContent, { transform: [{ scale: roulettePulse }] }]}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Roleta</Text>
+                <Text style={styles.rouletteModalSubtitle}>Escolha os filtros e deixe o app sortear.</Text>
+              </View>
+              <TouchableOpacity onPress={() => { clearRouletteTimers(); setIsRouletteModalVisible(false); }}>
+                <Ionicons name="close" size={28} color="#E1E1E6" />
+              </TouchableOpacity>
+            </View>
+
+            {!rouletteResultGame ? (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.rouletteModalBody}>
+                <View style={styles.rouletteFilterSection}>
+                  <Text style={styles.rouletteFilterTitle}>Status</Text>
+                  <View style={styles.chipsWrap}>
+                    {rouletteStatusOptions.length > 0 ? rouletteStatusOptions.map((status) => {
+                      const active = rouletteStatusFilters.includes(status);
+                      return (
+                        <TouchableOpacity
+                          key={status}
+                          style={[styles.rouletteChip, active && styles.rouletteChipActive]}
+                          onPress={() => setRouletteStatusFilters(prev => active ? prev.filter(s => s !== status) : [...prev, status])}
+                        >
+                          <Text style={[styles.rouletteChipText, active && styles.rouletteChipTextActive]}>{status}</Text>
+                        </TouchableOpacity>
+                      );
+                    }) : <Text style={styles.rouletteEmptyText}>Nenhum status encontrado.</Text>}
+                  </View>
+                </View>
+
+                <View style={styles.rouletteFilterSection}>
+                  <Text style={styles.rouletteFilterTitle}>Mídia</Text>
+                  <View style={styles.chipsWrap}>
+                    {(['all', 'physical', 'digital'] as const).map((value) => {
+                      const labels = { all: 'Todas', physical: 'Física', digital: 'Digital' } as const;
+                      const active = rouletteMediaFilter === value;
+                      return (
+                        <TouchableOpacity key={value} style={[styles.rouletteChip, active && styles.rouletteChipActive]} onPress={() => setRouletteMediaFilter(value)}>
+                          <Text style={[styles.rouletteChipText, active && styles.rouletteChipTextActive]}>{labels[value]}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+
+                <View style={styles.rouletteFilterSection}>
+                  <Text style={styles.rouletteFilterTitle}>Plataforma</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.platformChipsScroll}>
+                    {roulettePlatformOptions.map(platform => {
+                      const active = roulettePlatformFilter === platform;
+                      return (
+                        <TouchableOpacity key={platform} style={[styles.rouletteChip, active && styles.rouletteChipActive]} onPress={() => setRoulettePlatformFilter(platform)}>
+                          <Text style={[styles.rouletteChipText, active && styles.rouletteChipTextActive]}>{platform}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.rouletteFooterActions}>
+                  <TouchableOpacity style={styles.rouletteSecondaryButton} onPress={resetRouletteFilters}>
+                    <Text style={styles.rouletteSecondaryButtonText}>Limpar filtros</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.roulettePrimaryButton} onPress={startRoulette}>
+                    <Text style={styles.roulettePrimaryButtonText}>Sortear</Text>
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            ) : (
+              <View style={styles.rouletteModalBody}>
+                <Text style={styles.rouletteSpinningLabel}>{isRouletteSpinning ? 'Girando...' : 'Resultado'}</Text>
+
+                <Animated.View style={[styles.rouletteResultCard, { opacity: roulettePreviewGame ? 1 : 0.5 }]}>
+                  {roulettePreviewImage ? (
+                    <Image source={{ uri: roulettePreviewImage }} style={styles.rouletteResultImage} resizeMode="cover" />
+                  ) : (
+                    <View style={styles.rouletteResultImageFallback}>
+                      <Ionicons name="game-controller-outline" size={42} color="#7C7C8A" />
+                    </View>
+                  )}
+                  <Text style={styles.rouletteResultTitle}>{roulettePreviewGame?.name}</Text>
+                  <Text style={styles.rouletteResultSubtitle}>{roulettePreviewGame?.status || 'Sem status'}</Text>
+                </Animated.View>
+
+                {!isRouletteSpinning && rouletteResultGame && (
+                  <View style={styles.rouletteFooterActions}>
+                    <TouchableOpacity style={styles.rouletteSecondaryButton} onPress={() => { setRouletteResultGame(null); startRoulette(); }}>
+                      <Text style={styles.rouletteSecondaryButtonText}>Sortear de novo</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.roulettePrimaryButton} onPress={acceptRouletteGame}>
+                      <Text style={styles.roulettePrimaryButtonText}>Aceitar este</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
+          </Animated.View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -344,7 +638,50 @@ const styles = StyleSheet.create({
   modalTitle: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },
   modalList: { padding: 16 },
   modalFilterItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#202024', padding: 16, borderRadius: 8, marginBottom: 10 },
-  modalFilterText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' }
+  modalFilterText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+
+  rouletteHeroCard: { marginHorizontal: 16, marginBottom: 12, backgroundColor: '#202024', borderWidth: 1, borderColor: '#323238', borderRadius: 16, padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 16 },
+  rouletteHeroTextBlock: { flex: 1 },
+  rouletteHeroTag: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', backgroundColor: 'rgba(130, 87, 229, 0.18)', borderWidth: 1, borderColor: 'rgba(130, 87, 229, 0.45)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, marginBottom: 10 },
+  rouletteHeroTagText: { color: '#FFF', fontSize: 12, fontWeight: '800' },
+  rouletteHeroTitle: { color: '#FFF', fontSize: 18, fontWeight: '900', marginBottom: 4 },
+  rouletteHeroSubtitle: { color: '#7C7C8A', fontSize: 13, lineHeight: 18 },
+  rouletteHeroCounter: { minWidth: 72, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, backgroundColor: '#17171A', borderWidth: 1, borderColor: '#323238', alignItems: 'center' },
+  rouletteHeroCounterValue: { color: '#8257E5', fontSize: 24, fontWeight: '900' },
+  rouletteHeroCounterLabel: { color: '#7C7C8A', fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
+  resetRouletteCounterButton: { alignSelf: 'flex-end', marginRight: 16, marginBottom: 12, paddingVertical: 4, paddingHorizontal: 2 },
+  resetRouletteCounterText: { color: '#7C7C8A', fontSize: 12, fontWeight: '700' },
+
+  rouletteOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.72)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  rouletteModalContent: { width: '100%', backgroundColor: '#202024', borderRadius: 18, borderWidth: 1, borderColor: '#323238', overflow: 'hidden' },
+  rouletteModalSubtitle: { color: '#7C7C8A', fontSize: 12, marginTop: 4 },
+  rouletteModalBody: { padding: 20, gap: 18 },
+  rouletteNowPlayingSection: { gap: 10 },
+  rouletteNowPlayingTitle: { color: '#FFF', fontSize: 15, fontWeight: '800' },
+  rouletteNowPlayingScroll: { gap: 10, paddingRight: 4 },
+  rouletteNowPlayingChip: { backgroundColor: 'rgba(130, 87, 229, 0.16)', borderWidth: 1, borderColor: 'rgba(130, 87, 229, 0.4)', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8, maxWidth: 220 },
+  rouletteNowPlayingChipText: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  rouletteNowPlayingEmpty: { color: '#7C7C8A', fontSize: 13 },
+  rouletteFilterSection: { gap: 10 },
+  rouletteFilterTitle: { color: '#FFF', fontSize: 15, fontWeight: '800' },
+  chipsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  rouletteChip: { backgroundColor: '#17171A', borderWidth: 1, borderColor: '#323238', borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
+  rouletteChipActive: { backgroundColor: 'rgba(130, 87, 229, 0.2)', borderColor: '#8257E5' },
+  rouletteChipText: { color: '#E1E1E6', fontSize: 13, fontWeight: '700' },
+  rouletteChipTextActive: { color: '#FFF' },
+  rouletteEmptyText: { color: '#7C7C8A', fontSize: 13 },
+  platformChipsScroll: { gap: 10, paddingRight: 4 },
+  rouletteFooterActions: { flexDirection: 'row', gap: 12, marginTop: 4 },
+  rouletteSecondaryButton: { flex: 1, backgroundColor: '#17171A', borderWidth: 1, borderColor: '#323238', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  roulettePrimaryButton: { flex: 1, backgroundColor: '#8257E5', borderWidth: 1, borderColor: '#8257E5', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  rouletteSecondaryButtonText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  roulettePrimaryButtonText: { color: '#FFF', fontSize: 14, fontWeight: '800' },
+  rouletteSpinningLabel: { color: '#7C7C8A', fontSize: 12, textTransform: 'uppercase', letterSpacing: 0.8, fontWeight: '800' },
+  rouletteResultCard: { backgroundColor: '#17171A', borderWidth: 1, borderColor: '#323238', borderRadius: 16, padding: 14, alignItems: 'center', gap: 10 },
+  rouletteResultImage: { width: '100%', height: 220, borderRadius: 12, backgroundColor: '#000' },
+  rouletteResultImageFallback: { width: '100%', height: 220, borderRadius: 12, backgroundColor: '#0D0D0F', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#323238' },
+  rouletteResultTitle: { color: '#FFF', fontSize: 18, fontWeight: '900', textAlign: 'center' },
+  rouletteResultSubtitle: { color: '#7C7C8A', fontSize: 13, textAlign: 'center' }
 });
 
 function getCardWidth(columns: number) {

@@ -253,8 +253,16 @@ export default function EditGameScreen() {
                 </View>
 
                 <View style={styles.inputGroup}>
-                    <Text style={styles.label}>Descrição / Anotações</Text>
-                    <TextInput style={[styles.input, styles.textArea]} value={description} onChangeText={setDescription} multiline={true} />
+                    <Text style={styles.label}>Anotações</Text>
+                    <TextInput
+                        style={[styles.input, styles.textArea]}
+                        placeholder="O que você achou desse jogo?"
+                        placeholderTextColor="#7C7C8A"
+                        value={description}
+                        onChangeText={setDescription}
+                        multiline={true}
+                        numberOfLines={4}
+                    />
                 </View>
 
                 <TouchableOpacity style={styles.button} onPress={handleUpdate}>
