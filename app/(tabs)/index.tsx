@@ -41,6 +41,11 @@ export default function HomeScreen() {
   const filterHeight = useRef(new Animated.Value(0)).current; // Começa escondido (altura 0)
   const filterOpacity = useRef(new Animated.Value(0)).current; // Começa transparente
 
+  // --- ESTADOS DE ORDENAÇÃO ---
+  type SortOption = 'recent' | 'a-z' | 'z-a' | 'year-desc' | 'year-asc' | 'platform' | 'status';
+  const [sortOption, setSortOption] = useState<SortOption>('a-z'); // Começa com A-Z como você preferiu
+  const [isSortModalVisible, setIsSortModalVisible] = useState(false);
+
   useFocusEffect(
     useCallback(() => {
       async function fetchGames() {
@@ -87,6 +92,14 @@ export default function HomeScreen() {
     return myGames.filter((game) => (game.status || '').toLowerCase().includes('jogando'));
   }, [myGames]);
 
+  // Conta quantos jogos estão com o status "Terminado" ou "Platinado"
+  const finishedGamesCount = useMemo(() => {
+    return myGames.filter(game => {
+      const statusLower = (game.status || '').toLowerCase();
+      return statusLower === 'terminado' || statusLower === 'platinado';
+    }).length;
+  }, [myGames]);
+
   const rouletteActiveGame = useMemo(() => {
     return myGames.find((game) => game.idGame === rouletteActiveGameId) || null;
   }, [myGames, rouletteActiveGameId]);
@@ -102,6 +115,7 @@ export default function HomeScreen() {
   }, [currentPlayingGames, rouletteActiveGame]);
 
   const displayGames = useMemo(() => {
+    // 1. Primeiro fazemos o filtro normal (Busca e Pastas)
     let filtered = myGames.filter((game) =>
       game.name.toUpperCase().includes(searchText.toUpperCase())
     );
@@ -116,8 +130,40 @@ export default function HomeScreen() {
       );
     }
 
-    return filtered;
-  }, [myGames, searchText, activeFolder]);
+    // 2. Criamos uma cópia para não mutar o estado original e aplicamos a ordenação
+    const sorted = [...filtered];
+
+    switch (sortOption) {
+      case 'a-z':
+        sorted.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
+        break;
+      case 'z-a':
+        sorted.sort((a, b) => b.name.localeCompare(a.name, 'pt-BR', { sensitivity: 'base' }));
+        break;
+      case 'year-desc': // Lançamentos mais novos primeiro
+        sorted.sort((a, b) => (b.releaseYear || 0) - (a.releaseYear || 0));
+        break;
+      case 'year-asc': // Clássicos mais antigos primeiro
+        sorted.sort((a, b) => (a.releaseYear || 0) - (b.releaseYear || 0));
+        break;
+      case 'platform': // Agrupa pela plataforma (alfabetica)
+        sorted.sort((a, b) => {
+          const platA = a.platforms?.[0] ? (typeof a.platforms[0] === 'string' ? a.platforms[0] : a.platforms[0].name) : '';
+          const platB = b.platforms?.[0] ? (typeof b.platforms[0] === 'string' ? b.platforms[0] : b.platforms[0].name) : '';
+          return platA.localeCompare(platB, 'pt-BR', { sensitivity: 'base' });
+        });
+        break;
+      case 'status': // Agrupa pelo status (Jogando, Platinado, etc)
+        sorted.sort((a, b) => (a.status || '').localeCompare(b.status || '', 'pt-BR', { sensitivity: 'base' }));
+        break;
+      case 'recent':
+      default:
+        // Mantém a ordem padrão (como foi adicionado no app)
+        break;
+    }
+
+    return sorted;
+  }, [myGames, searchText, activeFolder, sortOption]);
 
   const roulettePreviewImage = roulettePreviewGame?.boxArtUrl || roulettePreviewGame?.coverUrl;
 
@@ -130,10 +176,10 @@ export default function HomeScreen() {
   };
 
   const handleRemoveFilter = (filterToRemove: string) => {
-      setUserFilters(prev => prev.filter(f => f !== filterToRemove));
-      if (activeFolder === filterToRemove) {
-          setActiveFolder('Todos');
-      }
+    setUserFilters(prev => prev.filter(f => f !== filterToRemove));
+    if (activeFolder === filterToRemove) {
+      setActiveFolder('Todos');
+    }
   };
 
   const getRouletteCandidates = useCallback(() => {
@@ -262,18 +308,18 @@ export default function HomeScreen() {
   // --- FUNÇÃO QUE DISPARA A ANIMAÇÃO ---
   const toggleFilters = () => {
     const toValue = isFiltersVisible ? 0 : 1;
-    
+
     Animated.parallel([
-        Animated.timing(filterHeight, {
-            toValue: isFiltersVisible ? 0 : 130, // 130 é a altura suficiente para os inputs e botões
-            duration: 300,
-            useNativeDriver: false, // height não suporta native driver
-        }),
-        Animated.timing(filterOpacity, {
-            toValue,
-            duration: 250,
-            useNativeDriver: false,
-        })
+      Animated.timing(filterHeight, {
+        toValue: isFiltersVisible ? 0 : 130, // 130 é a altura suficiente para os inputs e botões
+        duration: 300,
+        useNativeDriver: false, // height não suporta native driver
+      }),
+      Animated.timing(filterOpacity, {
+        toValue,
+        duration: 250,
+        useNativeDriver: false,
+      })
     ]).start();
 
     setIsFiltersVisible(!isFiltersVisible);
@@ -299,15 +345,21 @@ export default function HomeScreen() {
               titleRef.current?.blur();
             }}
           />
+          {/* AQUI ESTÁ A MUDANÇA: */}
           <Text style={styles.gameCount}>
-            {myGames.length} {myGames.length === 1 ? 'jogo' : 'jogos'}
+            {myGames.length} {myGames.length === 1 ? 'jogo' : 'jogos'}  •  {finishedGamesCount} {finishedGamesCount === 1 ? 'terminado' : 'terminados'}
           </Text>
         </View>
 
         <View style={styles.headerActions}>
+
           {/* BOTÃO DA GAVETA RETRÁTIL */}
           <TouchableOpacity style={styles.iconButton} onPress={toggleFilters}>
             <Ionicons name={isFiltersVisible ? "chevron-up" : "search"} size={26} color="#E1E1E6" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.iconButton} onPress={() => setIsSortModalVisible(true)}>
+            <Ionicons name="swap-vertical" size={26} color="#E1E1E6" />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/wishlist' as any)}>
@@ -359,19 +411,19 @@ export default function HomeScreen() {
                 onPress={() => setActiveFolder(folder)}
               >
                 <View style={styles.chipContent}>
-                    <Text style={[styles.folderText, activeFolder === folder && styles.folderTextActive]}>
-                      {folder}
-                    </Text>
-                    
-                    {folder !== 'Todos' && (
-                        <TouchableOpacity onPress={() => handleRemoveFilter(folder)} style={styles.removeFilterIcon}>
-                            <Ionicons 
-                                name="close-circle" 
-                                size={16} 
-                                color={activeFolder === folder ? '#FFF' : '#7C7C8A'} 
-                            />
-                        </TouchableOpacity>
-                    )}
+                  <Text style={[styles.folderText, activeFolder === folder && styles.folderTextActive]}>
+                    {folder}
+                  </Text>
+
+                  {folder !== 'Todos' && (
+                    <TouchableOpacity onPress={() => handleRemoveFilter(folder)} style={styles.removeFilterIcon}>
+                      <Ionicons
+                        name="close-circle"
+                        size={16}
+                        color={activeFolder === folder ? '#FFF' : '#7C7C8A'}
+                      />
+                    </TouchableOpacity>
+                  )}
                 </View>
               </TouchableOpacity>
             ))}
@@ -410,14 +462,14 @@ export default function HomeScreen() {
         renderItem={({ item }) => {
           const platformText = item.platforms && item.platforms.length > 0
             ? item.platforms
-                .map(p => {
-                  if (typeof p === 'string') {
-                    return getPlatformAbbreviation(p);
-                  }
+              .map(p => {
+                if (typeof p === 'string') {
+                  return getPlatformAbbreviation(p);
+                }
 
-                  return getPlatformAbbreviation(p.name, p.abbreviation);
-                })
-                .join(' • ')
+                return getPlatformAbbreviation(p.name, p.abbreviation);
+              })
+              .join(' • ')
             : 'Variados';
 
           const showInfo = dashboardColumns < 4;
@@ -585,6 +637,45 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
+      {/* MODAL: Ordenação */}
+      <Modal visible={isSortModalVisible} animationType="fade" transparent={true}>
+        <View style={styles.overlayModal}>
+          <View style={styles.smallModalContent}>
+            <Text style={styles.smallModalTitle}>Ordenar Catálogo</Text>
+
+            <ScrollView style={{ maxHeight: 400 }}>
+              {[
+                { id: 'a-z', label: 'Ordem Alfabética (A - Z)' },
+                { id: 'z-a', label: 'Ordem Alfabética (Z - A)' },
+                { id: 'recent', label: 'Adição Recente' },
+                { id: 'year-desc', label: 'Ano (Mais novos primeiro)' },
+                { id: 'year-asc', label: 'Ano (Clássicos primeiro)' },
+                { id: 'platform', label: 'Agrupar por Plataforma' },
+                { id: 'status', label: 'Agrupar por Status' },
+              ].map(option => (
+                <TouchableOpacity
+                  key={option.id}
+                  style={styles.optionItem}
+                  onPress={() => {
+                    setSortOption(option.id as SortOption);
+                    setIsSortModalVisible(false);
+                  }}
+                >
+                  <Text style={[styles.optionText, sortOption === option.id && { color: '#8257E5', fontWeight: 'bold' }]}>
+                    {option.label}
+                  </Text>
+                  {sortOption === option.id && <Ionicons name="checkmark" size={20} color="#8257E5" />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity style={styles.closeOptionButton} onPress={() => setIsSortModalVisible(false)}>
+              <Text style={styles.closeOptionText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -681,7 +772,14 @@ const styles = StyleSheet.create({
   rouletteResultImage: { width: '100%', height: 220, borderRadius: 12, backgroundColor: '#000' },
   rouletteResultImageFallback: { width: '100%', height: 220, borderRadius: 12, backgroundColor: '#0D0D0F', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#323238' },
   rouletteResultTitle: { color: '#FFF', fontSize: 18, fontWeight: '900', textAlign: 'center' },
-  rouletteResultSubtitle: { color: '#7C7C8A', fontSize: 13, textAlign: 'center' }
+  rouletteResultSubtitle: { color: '#7C7C8A', fontSize: 13, textAlign: 'center' },
+  overlayModal: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  smallModalContent: { backgroundColor: '#202024', width: '100%', borderRadius: 12, padding: 20, borderWidth: 1, borderColor: '#323238' },
+  smallModalTitle: { color: '#FFF', fontSize: 18, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' },
+  optionItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#323238' },
+  optionText: { color: '#E1E1E6', fontSize: 16 },
+  closeOptionButton: { marginTop: 16, alignItems: 'center', paddingVertical: 12 },
+  closeOptionText: { color: '#7C7C8A', fontSize: 16, fontWeight: 'bold' },
 });
 
 function getCardWidth(columns: number) {

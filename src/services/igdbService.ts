@@ -98,7 +98,6 @@ export async function searchGameImages(gameName: string): Promise<IgdbGameResult
             /Pack/i,
             /Collection/i,
             /DLC/i,
-            /Ultimate/i,
             /Game of the Year/i,
             /Deluxe/i,
             /Collector/i,
