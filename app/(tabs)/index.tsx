@@ -5,7 +5,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo, useRef, useState } from "react";
-import { Alert, Animated, Dimensions, FlatList, Image, Modal, TextInput as RNTextInput, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Alert, Animated, Dimensions, FlatList, Image, Keyboard, Modal, TextInput as RNTextInput, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
@@ -45,6 +45,8 @@ export default function HomeScreen() {
   type SortOption = 'recent' | 'a-z' | 'z-a' | 'year-desc' | 'year-asc' | 'platform' | 'status';
   const [sortOption, setSortOption] = useState<SortOption>('a-z'); // Começa com A-Z como você preferiu
   const [isSortModalVisible, setIsSortModalVisible] = useState(false);
+
+  const [showFinishedOnly, setShowFinishedOnly] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -120,6 +122,13 @@ export default function HomeScreen() {
       game.name.toUpperCase().includes(searchText.toUpperCase())
     );
 
+    if (showFinishedOnly) {
+      filtered = filtered.filter(g => {
+        const s = (g.status || '').toLowerCase();
+        return s === 'terminado' || s === 'platinado';
+      });
+    }
+
     if (activeFolder === 'Física') {
       filtered = filtered.filter(g => g.mediaType === 'physical');
     } else if (activeFolder === 'Digital') {
@@ -163,7 +172,7 @@ export default function HomeScreen() {
     }
 
     return sorted;
-  }, [myGames, searchText, activeFolder, sortOption]);
+  }, [myGames, searchText, activeFolder, sortOption, showFinishedOnly]);
 
   const roulettePreviewImage = roulettePreviewGame?.boxArtUrl || roulettePreviewGame?.coverUrl;
 
@@ -330,36 +339,60 @@ export default function HomeScreen() {
 
       {/* CABEÇALHO FIXO */}
       <View style={styles.fixedHeader}>
-        <View>
-          <TextInput
-            ref={titleRef}
-            style={styles.title}
-            value={catalogTitle}
-            onChangeText={handleTitleChange}
-            placeholder="Nome da Coleção..."
-            placeholderTextColor="#7C7C8A"
-            returnKeyType="done"
-            selectTextOnFocus={true}
-            cursorColor="#8257E5"
-            onSubmitEditing={() => {
-              titleRef.current?.blur();
-            }}
-          />
-          {/* AQUI ESTÁ A MUDANÇA: */}
-          <Text style={styles.gameCount}>
-            {myGames.length} {myGames.length === 1 ? 'jogo' : 'jogos'}  •  {finishedGamesCount} {finishedGamesCount === 1 ? 'terminado' : 'terminados'}
-          </Text>
+        <View style={{ flex: 1, paddingRight: 16 }}>
+
+          {/* O ScrollView horizontal permite arrastar um título gigante pro lado sem quebrar a tela */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            <TextInput
+              ref={titleRef}
+              style={styles.title}
+              value={catalogTitle}
+              onChangeText={handleTitleChange}
+              placeholder="Nome da Coleção..."
+              placeholderTextColor="#7C7C8A"
+              returnKeyType="done"
+              selectTextOnFocus={true}
+              cursorColor="#8257E5"
+              onSubmitEditing={() => titleRef.current?.blur()}
+            />
+          </ScrollView>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, flexWrap: 'wrap' }}>
+
+            {/* BOTÃO 1: MOSTRAR TODOS OS JOGOS */}
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setShowFinishedOnly(false)}>
+              <Text style={[
+                styles.gameCount,
+                // Se NÃO estiver filtrando por terminados, este texto fica em destaque (Roxo), senão fica Cinza
+                { color: !showFinishedOnly ? '#8257E5' : '#7C7C8A' }
+              ]}>
+                {myGames.length} {myGames.length === 1 ? 'jogo' : 'jogos'}
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={[styles.gameCount, { color: '#7C7C8A', marginHorizontal: 6 }]}>•</Text>
+
+            {/* BOTÃO 2: MOSTRAR APENAS TERMINADOS */}
+            <TouchableOpacity activeOpacity={0.7} onPress={() => setShowFinishedOnly(true)}>
+              <Text style={[
+                styles.gameCount,
+                // Se ESTIVER filtrando por terminados, este texto fica em destaque (Roxo), senão fica Cinza
+                { color: showFinishedOnly ? '#8257E5' : '#7C7C8A' }
+              ]}>
+                {finishedGamesCount} {finishedGamesCount === 1 ? 'terminado' : 'terminados'}
+              </Text>
+            </TouchableOpacity>
+
+          </View>
         </View>
 
         <View style={styles.headerActions}>
-
-          {/* BOTÃO DA GAVETA RETRÁTIL */}
-          <TouchableOpacity style={styles.iconButton} onPress={toggleFilters}>
-            <Ionicons name={isFiltersVisible ? "chevron-up" : "search"} size={26} color="#E1E1E6" />
-          </TouchableOpacity>
-
           <TouchableOpacity style={styles.iconButton} onPress={() => setIsSortModalVisible(true)}>
             <Ionicons name="swap-vertical" size={26} color="#E1E1E6" />
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.iconButton} onPress={toggleFilters}>
+            <Ionicons name={isFiltersVisible ? "chevron-up" : "search"} size={26} color="#E1E1E6" />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.iconButton} onPress={() => router.push('/wishlist' as any)}>
@@ -444,6 +477,7 @@ export default function HomeScreen() {
       <FlatList
         key={`cols-${dashboardColumns}`}
         data={displayGames}
+        onScrollBeginDrag={() => Keyboard.dismiss()}
         keyExtractor={(item) => item.idGame.toString()}
         numColumns={dashboardColumns}
         columnWrapperStyle={dashboardColumns > 1 ? styles.row : undefined}

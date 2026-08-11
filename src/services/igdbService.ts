@@ -29,7 +29,10 @@ export function mergeIgdbGamesByName(games: IgdbGameResult[]): IgdbGameResult[] 
     const groupedByName = new Map<string, IgdbGameResult>();
 
     games.forEach((game) => {
-        const key = game.name.toLowerCase().trim();
+        // O Pulo do Gato: A chave agora é o Nome + o Ano de Lançamento
+        const year = game.first_release_date ? new Date(game.first_release_date * 1000).getFullYear() : '0000';
+        const key = `${game.name.toLowerCase().trim()}-${year}`;
+
         const existing = groupedByName.get(key);
 
         if (!existing) {
@@ -40,17 +43,15 @@ export function mergeIgdbGamesByName(games: IgdbGameResult[]): IgdbGameResult[] 
             return;
         }
 
+        // Se chegar aqui, é literalmente o mesmo jogo do mesmo ano (talvez listado duplicado pela API)
+        // Então nós unimos as plataformas sem apagar o jogo!
         const combinedPlatforms = [...(existing.platforms || []), ...(game.platforms || [])];
         const uniquePlatforms = combinedPlatforms.filter((platform, index, self) =>
             index === self.findIndex((p) => p.id === platform.id)
         );
 
-        const existingDate = existing.first_release_date || Number.MAX_SAFE_INTEGER;
-        const currentDate = game.first_release_date || Number.MAX_SAFE_INTEGER;
-        const canonicalGame = currentDate < existingDate ? game : existing;
-
         groupedByName.set(key, {
-            ...canonicalGame,
+            ...existing,
             platforms: uniquePlatforms,
         });
     });
@@ -77,7 +78,7 @@ export async function searchGameImages(gameName: string): Promise<IgdbGameResult
     if (!token) return [];
 
     try {
-        const query = `fields name,first_release_date,game_type,version_parent,cover.image_id,artworks.image_id,screenshots.image_id,platforms.name,platforms.abbreviation; search "${gameName}"; limit 50;`;
+        const query = `fields name,first_release_date,game_type,version_parent,cover.image_id,artworks.image_id,screenshots.image_id,platforms.name,platforms.abbreviation; where name ~ *"${gameName}"*; limit 50;`;
 
         const response = await axios({
             url: 'https://api.igdb.com/v4/games',
@@ -108,19 +109,19 @@ export async function searchGameImages(gameName: string): Promise<IgdbGameResult
 
         // Filtra jogos válidos considerando variações de enums do IGDB (game_type/category)
         const filtered = response.data.filter((game: IgdbGameResult) => {
-                const normalizedType = game.game_type ?? game.category;
-                const validGameTypes = [0, 3, 4, 7, 8, 9, 10];
-                const isRemasterByName = /remaster|remastered/i.test(game.name || '');
+            const normalizedType = game.game_type ?? game.category;
+            const validGameTypes = [0, 3, 4, 7, 8, 9, 10];
+            const isRemasterByName = /remaster|remastered/i.test(game.name || '');
 
-                // Treat missing/undefined type as acceptable (IGDB sometimes omits these fields)
-                const isValidType = (typeof normalizedType === 'number' ? validGameTypes.includes(normalizedType) : true) || isRemasterByName;
-                const hasVersionParent = !!game.version_parent;
-                const matchesExcludePattern = excludePatterns.some(pattern => pattern.test(game.name));
+            // Treat missing/undefined type as acceptable (IGDB sometimes omits these fields)
+            const isValidType = (typeof normalizedType === 'number' ? validGameTypes.includes(normalizedType) : true) || isRemasterByName;
+            const hasVersionParent = !!game.version_parent;
+            const matchesExcludePattern = excludePatterns.some(pattern => pattern.test(game.name));
 
-                const allowsVersionParent = (typeof normalizedType === 'number' && [3, 4, 7, 8, 9, 10].includes(normalizedType)) || isRemasterByName;
-                const shouldExclude = hasVersionParent && !allowsVersionParent;
+            const allowsVersionParent = (typeof normalizedType === 'number' && [3, 4, 7, 8, 9, 10].includes(normalizedType)) || isRemasterByName;
+            const shouldExclude = hasVersionParent && !allowsVersionParent;
 
-                return isValidType && !shouldExclude && !matchesExcludePattern;
+            return isValidType && !shouldExclude && !matchesExcludePattern;
         });
 
         return filtered;
@@ -154,13 +155,24 @@ export const getExpansionsByIgdbId = async (igdbId: number): Promise<IgdbExpansi
                 'Client-ID': CLIENT_ID as string,
                 'Authorization': `Bearer ${token}`,
             },
-            data: `fields expansions.name, expansions.id, expansions.cover.image_id; where id = ${igdbId}; limit 1;`
+            // AGORA PEDIMOS dlcs E expansions NA MESMA REQUISIÇÃO
+            data: `fields expansions.name, expansions.id, expansions.cover.image_id, dlcs.name, dlcs.id, dlcs.cover.image_id; where id = ${igdbId}; limit 1;`
         });
 
         const game = response.data && response.data[0];
-        if (!game || !game.expansions) return [];
+        if (!game) return [];
 
-        return game.expansions as IgdbExpansion[];
+        // Juntamos as duas listas
+        const expansions = game.expansions || [];
+        const dlcs = game.dlcs || [];
+        const combined = [...expansions, ...dlcs];
+
+        // Remove possíveis duplicatas caso o IGDB retorne o mesmo item nas duas listas
+        const unique = combined.filter((item, index, self) =>
+            index === self.findIndex((t) => t.id === item.id)
+        );
+
+        return unique as IgdbExpansion[];
     } catch (error) {
         return [];
     }
